@@ -1,16 +1,28 @@
-// models/PieceDossier.js
-const { DataTypes } = require('sequelize');
-const { sequelize } = require('../config/db');
+const { DataTypes } = require("sequelize");
+const { sequelize } = require("../config/db");
 
 const PieceDossier = sequelize.define('PieceDossier', {
   nom: {
     type: DataTypes.STRING,
     allowNull: false
   },
-  dossierId: { // Vérifie que cette colonne existe si tu la gères manuellement
+  prestationId: { 
     type: DataTypes.INTEGER,
-    allowNull: false
+    allowNull: true,
+    references: {
+      model: 'Prestations', 
+      key: 'id'
+    }
+  },
+  dossierId: {  // ✅ AJOUTE ÇA
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    references: {
+      model: 'Dossiers',
+      key: 'id'
+    }
   }
+}, {
+  tableName: 'pieces_dossiers'
 });
-
-module.exports = PieceDossier; // <--- VÉRIFIE CETTE LIGNE
+module.exports = PieceDossier;

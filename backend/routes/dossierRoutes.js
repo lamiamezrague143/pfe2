@@ -8,36 +8,33 @@ const { Op } = require('sequelize');
 router.post('/ajouter', async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    const { 
-      nom_beneficiaire, 
-      type_prestation, 
-      fonction, 
-      pieces_deposees, 
-      montant_avenant
-    } = req.body;
+    const { nom_beneficiaire, type_prestation, fonction, pieces_deposees, montant_avenant } = req.body;
 
-    const count = await Dossier.count() + 1;
-    const num_sequence = `${new Date().getFullYear()}-${count.toString().padStart(3, '0')}`;
+    if (!nom_beneficiaire || !type_prestation) {
+      return res.status(400).json({ message: "Nom et type de prestation obligatoires" });
+    }
+
+    const count = await Dossier.count();
+    const num_sequence = `${new Date().getFullYear()}-${(count + 1).toString().padStart(3, '0')}`;
 
     const dossier = await Dossier.create({
       num_sequence,
       nom_beneficiaire,
       type_prestation,
       fonction,
-      montant_avenant: montant_avenant || 0,
+      montant_avenant: montant_avenant ? parseFloat(montant_avenant) : 0,
     }, { transaction: t });
-
-    if (pieces_deposees && pieces_deposees.length > 0) {
-      const pieces = pieces_deposees.map(nom => ({
-        nom,
-        dossierId: dossier.id
-      }));
-      await PieceDossier.bulkCreate(pieces, { transaction: t });
-    }
-
+// Par ce bloc corrigé :
+if (Array.isArray(pieces_deposees) && pieces_deposees.length > 0) {
+  const pieces = pieces_deposees.map(nom => ({
+    nom,
+    dossierId: dossier.id,
+    prestationId: req.body.prestationId || 1 // ⚠️ Met la prestation associée ici
+  }));
+  await PieceDossier.bulkCreate(pieces, { transaction: t });
+}
     await t.commit();
 
-    // ✅ RENOMMÉ : as: 'piecesJointes'
     const dossierComplet = await Dossier.findByPk(dossier.id, {
       include: [{ model: PieceDossier, as: 'piecesJointes' }]
     });
@@ -45,8 +42,8 @@ router.post('/ajouter', async (req, res) => {
     res.status(201).json(dossierComplet);
   } catch (error) {
     if (t) await t.rollback();
-    console.error("Erreur Backend:", error.message);
-    res.status(500).send(error.message);
+    console.error("Erreur Backend:", error);
+    res.status(500).json({ message: error.message });
   }
 });
 
