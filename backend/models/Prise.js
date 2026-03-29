@@ -59,6 +59,10 @@ const Prise = sequelize.define("Prise", {
     type: DataTypes.INTEGER,
     allowNull: false,
   },
+  statut: {
+  type: DataTypes.ENUM('Active', 'Annulée'),
+  defaultValue: 'Active'
+},
 
 }, {
   tableName: "prises_en_charge",

@@ -13,29 +13,30 @@ router.post("/register", upload.single("photo"), async (req, res) => {
   try {
     const photoUrl = req.file ? req.file.path : null;
 
+    // Destructuration des données
     const { 
-      nomComplet, 
-      prenomComplet, 
-      dateNaissance, 
-      lieuNaissance, 
-      sexe, 
-      departement, 
-      numero, 
-      email, 
-      positionAdministrative,
-      categorieRole, 
-      ayantDroits 
+      nomComplet, prenomComplet, dateNaissance, lieuNaissance, 
+      sexe, departement, numero, email, positionAdministrative,
+      categorieRole, ayantDroits 
     } = req.body;
 
-    // ✅ CORRECTION JSON.parse sécurisé
+    // Validation minimale pour éviter des erreurs SQL Null
+    if (!nomComplet || !email) {
+      return res.status(400).json({ message: "Le nom et l'email sont obligatoires" });
+    }
+
     let parsedAyantDroits = [];
-    try {
-      parsedAyantDroits = ayantDroits ? JSON.parse(ayantDroits) : [];
-    } catch (e) {
-      parsedAyantDroits = [];
+    if (ayantDroits) {
+      try {
+        parsedAyantDroits = typeof ayantDroits === 'string' ? JSON.parse(ayantDroits) : ayantDroits;
+      } catch (e) {
+        console.error("Erreur de parsing ayantDroits:", e);
+        parsedAyantDroits = [];
+      }
     }
 
     const salt = await bcrypt.genSalt(10);
+    // Mot de passe par défaut pour le PFE
     const hashedPassword = await bcrypt.hash("PFE2026", salt);
 
     const newUser = await User.create({
@@ -51,7 +52,7 @@ router.post("/register", upload.single("photo"), async (req, res) => {
       positionAdministrative: positionAdministrative || "En activité",
       categorieRole: categorieRole || "Enseignant",
       photo: photoUrl,
-      ayantDroits: parsedAyantDroits // ✅ FIX ICI
+      ayantDroits: parsedAyantDroits
     });
 
     res.status(201).json({ 
@@ -60,14 +61,17 @@ router.post("/register", upload.single("photo"), async (req, res) => {
     });
 
   } catch (err) {
+    // Si l'email existe déjà, Sequelize renverra une erreur spécifique
+    if (err.name === 'SequelizeUniqueConstraintError') {
+      return res.status(400).json({ message: "Cet email ou numéro est déjà utilisé." });
+    }
     console.error("Erreur d'enregistrement:", err);
     res.status(500).json({ 
-      message: "Erreur serveur lors de l'inscription", 
+      message: "Erreur serveur interne", 
       error: err.message 
     });
   }
 });
-
 // =========================
 // 2. SEARCH
 // =========================
@@ -83,9 +87,13 @@ router.get("/search", async (req, res) => {
     });
     res.json(users);
   } catch (err) {
-    console.error(err);
-    res.status(500).send("Erreur serveur");
-  }
+  console.error("DEBUG d'erreur complète :", err); // Regarde l'objet err en entier
+  res.status(500).json({ 
+    message: "Erreur serveur interne", 
+    error: err.name,
+    details: err.errors ? err.errors.map(e => e.message) : err.message 
+  });
+}
 });
 // =========================
 // 3. GET ALL
@@ -123,41 +131,49 @@ router.delete("/:id", async (req, res) => {
 // =========================
 // 5. UPDATE USER
 // =========================
+// =========================
+// 5. UPDATE USER (CORRIGÉ)
+// =========================
 router.put("/:id", upload.single("photo"), async (req, res) => {
   try {
+    const { id } = req.params;
     const updateData = { ...req.body };
 
+    // Si une nouvelle photo est téléchargée
     if (req.file) {
       updateData.photo = req.file.path;
     }
 
-    // ✅ sécuriser JSON.parse ici aussi
+    // Gérer les ayant-droits sans faire planter le serveur
     if (updateData.ayantDroits) {
       try {
-        updateData.ayantDroits = JSON.parse(updateData.ayantDroits);
+        // On ne fait JSON.parse que si c'est du texte brut (String)
+        if (typeof updateData.ayantDroits === 'string') {
+          updateData.ayantDroits = JSON.parse(updateData.ayantDroits);
+        }
       } catch (e) {
-        updateData.ayantDroits = [];
+        console.error("Problème avec le format des ayant-droits");
+        // En cas d'erreur, on garde ce qu'on a ou on met un tableau vide
+        updateData.ayantDroits = Array.isArray(updateData.ayantDroits) ? updateData.ayantDroits : [];
       }
     }
 
+    // Lancement de la mise à jour dans la base de données
     const [updated] = await User.update(updateData, {
-      where: { id: req.params.id }
+      where: { id: id }
     });
 
     if (updated) {
-      const updatedUser = await User.findByPk(req.params.id);
-      return res.status(200).json({ 
-        message: "Utilisateur mis à jour !", 
-        user: updatedUser 
-      });
+      const userMisAJour = await User.findByPk(id);
+      return res.status(200).json({ message: "Succès !", user: userMisAJour });
     }
 
-    return res.status(404).json({ message: "Utilisateur non trouvé" });
+    res.status(404).json({ message: "Utilisateur non trouvé" });
 
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Erreur mise à jour", error: err.message });
+    // ICI : Regarde ton terminal Node.js, l'erreur s'affichera précisément
+    console.error("ERREUR SERVEUR :", err); 
+    res.status(500).json({ message: "Erreur technique", details: err.message });
   }
 });
-
 module.exports = router;
