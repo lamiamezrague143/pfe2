@@ -43,24 +43,7 @@ function DossierModal({ demande, onClose, onDecision }) {
       setLoading(false);
     }
   };
-  //annuler la prise 
-  const annulerPrise = async (id) => {
-  if (!window.confirm("Voulez-vous annuler cette prise en charge ?")) return;
 
-  try {
-    await axios.put(`http://localhost:5001/api/prise-en-charge/annuler/${id}`);
-    alert("✅ Prise en charge annulée");
-
-    // Recharge la liste
-    const res = await fetch("http://localhost:5001/api/prise-en-charge/all");
-    const data = await res.json();
-    setHistory(data);
-
-  } catch (err) {
-    console.error(err);
-    alert("❌ Erreur lors de l'annulation");
-  }
-};
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
@@ -466,6 +449,25 @@ const handleSave = async () => {
     if (res.status !== 200) throw new Error("Erreur serveur");
     await fetchDemandesEnLigne();
   };
+const annulerPrise = async (id) => {
+  if (!window.confirm("Voulez-vous annuler cette prise en charge ?")) return;
+
+  try {
+    await axios.put(`http://localhost:5001/api/prise-en-charge/annuler/${id}`);
+
+    alert("✅ Prise en charge annulée");
+
+    // recharge les données
+    const res = await fetch("http://localhost:5001/api/prise-en-charge/all");
+    const data = await res.json();
+
+    setHistory(data);
+
+  } catch (err) {
+    console.error(err);
+    alert("❌ Erreur lors de l'annulation");
+  }
+};
 
   const getSoldeLabel = () => {
     const p = formData.prestation.toUpperCase();
