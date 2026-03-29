@@ -161,12 +161,15 @@ const statsGrades = history.reduce((acc, curr) => {
   return acc;
 }, { "ATS": 0, "ENSEIGNANT": 0, "RETRAITE": 0, "AUTRES": 0 });
 
-  const statsPrestations = history.reduce((acc, curr) => {
-    const p = curr.titre || curr.prestation;
-    if (!p) return acc;
-    acc[p] = (acc[p] || 0) + 1;
-    return acc;
-  }, {});
+const statsPrestations = history.reduce((acc, curr) => {
+  if (curr.status === "annulé") return acc;
+
+  const p = curr.titre || curr.prestation;
+  if (!p) return acc;
+
+  acc[p] = (acc[p] || 0) + 1;
+  return acc;
+}, {});
 
   const avenantsByClient = dossiers.reduce((acc, d) => {
     const key = (d.nom_beneficiaire || "").toUpperCase().trim();
@@ -185,8 +188,14 @@ const statsGrades = history.reduce((acc, curr) => {
   }, {});
 
   const clientsRegroupes = history.reduce((acc, curr) => {
+    if (curr.status === "annulé") return acc;
     const clientKey  = (curr.pieces?.patient || `${curr.pNom} ${curr.pPrenom}`).toUpperCase().trim();
-    const montant    = parseFloat(curr.pieces?.montant || curr.montantTotal || 0);
+    const montantBrut = parseFloat(curr.pieces?.montant || curr.montantTotal || 0);
+
+// ❌ on ignore les annulés
+if (curr.status === "annulé") return acc;
+
+const montant = montantBrut;
     const titrePrest = curr.titre || curr.prestation || "";
     const prestUpper = titrePrest.toUpperCase();
 
@@ -204,8 +213,14 @@ const statsGrades = history.reduce((acc, curr) => {
         totalConsomme: 0,
       };
     }
-    target[clientKey].prises.push({ montant, prestation: titrePrest });
-    target[clientKey].totalConsomme += montant;
+    target[clientKey].prises.push({
+  montant,
+  prestation: titrePrest,
+  status: curr.status || "actif"
+});
+    if (curr.status !== "annulé") {
+  target[clientKey].totalConsomme += montant;
+}
 
     return acc;
   }, { general: {}, dentaire: {}, ophtalmique: {} });
@@ -237,10 +252,9 @@ const statsGrades = history.reduce((acc, curr) => {
 
   const renderTable = (data, title, plafondMax, colorBorder) => {
     const clients  = Object.values(data);
-    const filtered = clients.filter(client =>
-      client.nom.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-
+const filtered = clients.filter(client =>
+  (client.nom || "").toLowerCase().includes(searchTerm.toLowerCase())
+);
     const maxPrises   = clients.reduce((max, c) => Math.max(max, c.prises.length), 0) || 1;
     const maxAvenants = clients.reduce((max, c) => Math.max(max, c.avenants.length), 0);
 
@@ -293,11 +307,20 @@ const statsGrades = history.reduce((acc, curr) => {
                       return (
                         <td key={`pc-${i}`} className="p-4 text-center border-l border-gray-100 min-w-[130px]">
                           {prise ? (
-                            <div className="flex flex-col items-center">
-                              <span className="text-[9px] font-bold text-gray-400 uppercase leading-tight">{prise.prestation}</span>
-                              <span className="text-[11px] font-black text-blue-700">{prise.montant.toLocaleString()} DA</span>
-                            </div>
-                          ) : <span className="text-gray-300 text-[10px]">—</span>}
+  <div className="flex flex-col items-center">
+    <span className="text-[9px] font-bold text-gray-400 uppercase leading-tight">
+      {prise.prestation}
+    </span>
+
+    <span className={`text-[11px] font-black ${prise.status === "annulé" ? "text-red-500 line-through" : "text-blue-700"}`}>
+      {prise.montant.toLocaleString()} DA
+    </span>
+
+    {prise.status === "annulé" && (
+      <span className="text-[8px] text-red-500 font-bold">ANNULÉ</span>
+    )}
+  </div>
+) :  <span className="text-gray-300 text-[10px]">—</span>}
                         </td>
                       );
                     })}
