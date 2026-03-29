@@ -22,6 +22,8 @@ const dossierRoutes = require('./routes/dossierRoutes');
 const prestationRoutes = require('./routes/prestationRoutes');
 const demandeRoutes = require('./routes/demandeRoutes'); 
 const etatRoutes = require('./routes/etatRoutes');      
+// 1. Importation de la route
+const pieceRoutes = require('./routes/pieceRoutes');
 
 const app = express();
 
@@ -41,6 +43,10 @@ if (!fs.existsSync(uploadDir)) { fs.mkdirSync(uploadDir); } // Crée le dossier 
 app.use('/uploads', express.static('uploads'));
 
 
+// ... (après tes middlewares comme app.use(cors()))
+
+// 2. Utilisation de la route
+app.use('/api/pieces', pieceRoutes);
 
 
 // --- ROUTES API ---

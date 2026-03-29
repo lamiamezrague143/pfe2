@@ -5,7 +5,7 @@ import axios from 'axios';
 import { 
   Plus, Trash2, Printer, Search, ArrowLeft, LayoutDashboard, Check, 
   ChevronRight, ClipboardList, Filter, Edit3, X, Shield, Activity, 
-  Landmark, FileText, User, Calendar, GripVertical, Pencil  // <--- Tu peux essayer Coins ou Banknote ici
+  Landmark, FileText, User, Calendar, GripVertical, Pencil
 } from 'lucide-react';
 
 const API_BASE = "http://localhost:5001/api";
@@ -17,6 +17,71 @@ const getIcon = (titre) => {
   if (t.includes('dentaire')) return <Landmark size={20}/>;
   return <FileText size={20}/>;
 };
+
+// ✅ FIX : PiecesManager est maintenant EN DEHORS du composant principal
+// Avant il était à l'intérieur → recréé à chaque render → perte de focus à chaque lettre
+function PiecesManager({ pieces, onAdd, onDelete, onStartEdit, onSaveEdit, onCancelEdit, onChangeTempNom, inputValue, onInputChange, placeholder = "Nom du document..." }) {
+  return (
+    <div className="space-y-3">
+      <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+        {pieces.length === 0 && (
+          <div className="text-center py-6 text-slate-400 text-sm font-medium bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
+            Aucun document requis pour l'instant
+          </div>
+        )}
+        {pieces.map((p, i) => (
+          <div key={p.id} className={`flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2.5 border-2 transition-all ${p.editing ? 'border-green-400 bg-green-50' : 'border-transparent'}`}>
+            <GripVertical size={14} className="text-gray-300 shrink-0" />
+            {p.editing ? (
+              <>
+                <input
+                  autoFocus
+                  value={p.tempNom ?? p.nom}
+                  onChange={e => onChangeTempNom(p.id, e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') onSaveEdit(p.id); if (e.key === 'Escape') onCancelEdit(p.id); }}
+                  className="flex-1 bg-white border border-green-300 rounded-lg px-2 py-1 text-sm font-bold outline-none focus:ring-2 focus:ring-green-400"
+                />
+                <button onClick={() => onSaveEdit(p.id)} className="w-7 h-7 bg-green-600 text-white rounded-lg flex items-center justify-center hover:bg-green-700 transition shrink-0">
+                  <Check size={13} strokeWidth={3}/>
+                </button>
+                <button onClick={() => onCancelEdit(p.id)} className="w-7 h-7 bg-gray-200 text-gray-500 rounded-lg flex items-center justify-center hover:bg-gray-300 transition shrink-0">
+                  <X size={13}/>
+                </button>
+              </>
+            ) : (
+              <>
+                <span className="flex-1 text-sm font-bold text-slate-700 truncate">{p.nom}</span>
+                <span className="text-[10px] font-black text-slate-300 mr-1">#{i + 1}</span>
+                <button onClick={() => onStartEdit(p.id)} className="w-7 h-7 bg-white border border-gray-200 text-gray-400 rounded-lg flex items-center justify-center hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition shrink-0">
+                  <Pencil size={12}/>
+                </button>
+                <button onClick={() => onDelete(p.id)} className="w-7 h-7 bg-white border border-gray-200 text-gray-400 rounded-lg flex items-center justify-center hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition shrink-0">
+                  <Trash2 size={12}/>
+                </button>
+              </>
+            )}
+          </div>
+        ))}
+      </div>
+      <div className="flex gap-2 mt-2">
+        <input
+          value={inputValue}
+          onChange={e => onInputChange(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') onAdd(); }}
+          placeholder={placeholder}
+          className="flex-1 bg-gray-50 border-2 border-dashed border-gray-300 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:border-green-400 focus:bg-green-50 transition-all placeholder-gray-300"
+        />
+        <button
+          onClick={onAdd}
+          disabled={!inputValue.trim()}
+          className="px-4 py-2.5 bg-green-700 text-white rounded-xl font-black text-sm hover:bg-green-800 transition disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1.5 shrink-0"
+        >
+          <Plus size={15}/> Ajouter
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export default function GestionDossiersDashboard() {
   const [vueActive, setVueActive] = useState("dashboard"); 
@@ -31,23 +96,20 @@ export default function GestionDossiersDashboard() {
   const [beneficiaireSelectionne, setBeneficiaireSelectionne] = useState(null);
   const [fonctionChoisie, setFonctionChoisie] = useState(''); 
   const [listePieces, setListePieces] = useState([]); 
-  const [montantAvenant, setMontantAvenant] = useState(''); // <--- NOUVEAU
+  const [montantAvenant, setMontantAvenant] = useState('');
   const [accusereception, setAccuseReception] = useState(null);
 
   const [dateDebut, setDateDebut] = useState('');
   const [dateFin, setDateFin] = useState('');
   const [rechercheRegistre, setRechercheRegistre] = useState('');
 
-  // ── États modale ajout prestation ──
   const [showModalPrestation, setShowModalPrestation] = useState(false);
   const [newPrestationTitre, setNewPrestationTitre] = useState('');
-  // Pièces sous forme de tableau d'objets { id, nom, editing }
   const [newPrestationPieces, setNewPrestationPieces] = useState([]);
   const [newPieceInput, setNewPieceInput] = useState('');
 
-  // ── États modale MODIFICATION prestation ──
   const [showModalEdit, setShowModalEdit] = useState(false);
-  const [editPrestation, setEditPrestation] = useState(null); // { id, titre, pieces[] }
+  const [editPrestation, setEditPrestation] = useState(null);
   const [editTitre, setEditTitre] = useState('');
   const [editPieces, setEditPieces] = useState([]);
   const [editPieceInput, setEditPieceInput] = useState('');
@@ -63,7 +125,12 @@ export default function GestionDossiersDashboard() {
       ]);
       setUtilisateurs(resUsers.data || []);
       setDossiers(resDossiers.data || []);
-      setBlocs(resPrestations.data || []);
+      // ✅ FIX : parser les pieces si c'est un string JSON
+      const blocsData = (resPrestations.data || []).map(b => ({
+        ...b,
+        pieces: typeof b.pieces === 'string' ? (() => { try { return JSON.parse(b.pieces); } catch { return []; } })() : (Array.isArray(b.pieces) ? b.pieces : [])
+      }));
+      setBlocs(blocsData);
     } catch (err) { 
       console.error("Erreur chargement données:", err); 
     }
@@ -78,28 +145,11 @@ export default function GestionDossiersDashboard() {
     setNewPrestationPieces(prev => [...prev, { id: Date.now(), nom: val, editing: false }]);
     setNewPieceInput('');
   };
-
-  const supprimerPieceNouveauForm = (id) => {
-    setNewPrestationPieces(prev => prev.filter(p => p.id !== id));
-  };
-
-  const startEditPieceNouveauForm = (id) => {
-    setNewPrestationPieces(prev => prev.map(p => p.id === id ? { ...p, editing: true, tempNom: p.nom } : p));
-  };
-
-  const saveEditPieceNouveauForm = (id) => {
-    setNewPrestationPieces(prev => prev.map(p => {
-      if (p.id === id) {
-        const newNom = (p.tempNom || '').trim();
-        return { ...p, nom: newNom || p.nom, editing: false, tempNom: undefined };
-      }
-      return p;
-    }));
-  };
-
-  const cancelEditPieceNouveauForm = (id) => {
-    setNewPrestationPieces(prev => prev.map(p => p.id === id ? { ...p, editing: false, tempNom: undefined } : p));
-  };
+  const supprimerPieceNouveauForm = (id) => setNewPrestationPieces(prev => prev.filter(p => p.id !== id));
+  const startEditPieceNouveauForm = (id) => setNewPrestationPieces(prev => prev.map(p => p.id === id ? { ...p, editing: true, tempNom: p.nom } : p));
+  const saveEditPieceNouveauForm = (id) => setNewPrestationPieces(prev => prev.map(p => p.id === id ? { ...p, nom: (p.tempNom || p.nom).trim() || p.nom, editing: false, tempNom: undefined } : p));
+  const cancelEditPieceNouveauForm = (id) => setNewPrestationPieces(prev => prev.map(p => p.id === id ? { ...p, editing: false, tempNom: undefined } : p));
+  const changeTempNomNouveauForm = (id, val) => setNewPrestationPieces(prev => prev.map(p => p.id === id ? { ...p, tempNom: val } : p));
 
   // ── Helpers pièces (modale modification) ──
   const ajouterPieceEdit = () => {
@@ -108,30 +158,12 @@ export default function GestionDossiersDashboard() {
     setEditPieces(prev => [...prev, { id: Date.now(), nom: val, editing: false }]);
     setEditPieceInput('');
   };
+  const supprimerPieceEdit = (id) => setEditPieces(prev => prev.filter(p => p.id !== id));
+  const startEditPieceEdit = (id) => setEditPieces(prev => prev.map(p => p.id === id ? { ...p, editing: true, tempNom: p.nom } : p));
+  const saveEditPieceEdit = (id) => setEditPieces(prev => prev.map(p => p.id === id ? { ...p, nom: (p.tempNom || p.nom).trim() || p.nom, editing: false, tempNom: undefined } : p));
+  const cancelEditPieceEdit = (id) => setEditPieces(prev => prev.map(p => p.id === id ? { ...p, editing: false, tempNom: undefined } : p));
+  const changeTempNomEdit = (id, val) => setEditPieces(prev => prev.map(p => p.id === id ? { ...p, tempNom: val } : p));
 
-  const supprimerPieceEdit = (id) => {
-    setEditPieces(prev => prev.filter(p => p.id !== id));
-  };
-
-  const startEditPieceEdit = (id) => {
-    setEditPieces(prev => prev.map(p => p.id === id ? { ...p, editing: true, tempNom: p.nom } : p));
-  };
-
-  const saveEditPieceEdit = (id) => {
-    setEditPieces(prev => prev.map(p => {
-      if (p.id === id) {
-        const newNom = (p.tempNom || '').trim();
-        return { ...p, nom: newNom || p.nom, editing: false, tempNom: undefined };
-      }
-      return p;
-    }));
-  };
-
-  const cancelEditPieceEdit = (id) => {
-    setEditPieces(prev => prev.map(p => p.id === id ? { ...p, editing: false, tempNom: undefined } : p));
-  };
-
-  // ── Ouvrir modale MODIFICATION ──
   const ouvrirEditPrestation = (e, bloc) => {
     e.stopPropagation();
     setEditPrestation(bloc);
@@ -141,15 +173,13 @@ export default function GestionDossiersDashboard() {
     setShowModalEdit(true);
   };
 
-  // ── Sauvegarder modification ──
   const sauvegarderModification = async () => {
     if (!editTitre.trim()) return;
-    const payload = {
-      titre: editTitre.trim(),
-      pieces: editPieces.map(p => p.nom).filter(Boolean)
-    };
     try {
-      await axios.put(`${API_BASE}/prestations/modifier/${editPrestation.id}`, payload);
+      await axios.put(`${API_BASE}/prestations/modifier/${editPrestation.id}`, {
+        titre: editTitre.trim(),
+        pieces: editPieces.map(p => p.nom).filter(Boolean)
+      });
       chargerDonnees();
       setShowModalEdit(false);
       setEditPrestation(null);
@@ -159,25 +189,25 @@ export default function GestionDossiersDashboard() {
     }
   };
 
-  // ── Ajouter prestation ──
-  const ajouterPrestation = async () => {
-    if (!newPrestationTitre.trim()) return;
-    const payload = {
+const ajouterPrestation = async () => {
+  if (!newPrestationTitre.trim()) return;
+  try {
+    const piecesArray = newPrestationPieces.map(p => p.nom).filter(Boolean);
+    
+    // ✅ Envoi simple de l'objet
+    await axios.post(`${API_BASE}/prestations/ajouter`, {
       titre: newPrestationTitre.trim(),
-      pieces: newPrestationPieces.map(p => p.nom).filter(Boolean)
-    };
-    try {
-      await axios.post(`${API_BASE}/prestations/ajouter`, payload);
-      chargerDonnees(); 
-      setNewPrestationTitre('');
-      setNewPrestationPieces([]);
-      setNewPieceInput('');
-      setShowModalPrestation(false);
-    } catch (err) {
-      console.error("Erreur ajout prestation:", err);
-      alert("Erreur lors de la création de la prestation sur le serveur.");
-    }
-  };
+      pieces: piecesArray 
+    });
+
+    await chargerDonnees();
+    setShowModalPrestation(false);
+  } catch (err) {
+    // 🚩 Regardez ici ce que dit le serveur !
+    console.error("Détails de l'erreur 500 :", err.response?.data);
+    alert(err.response?.data?.details || "Erreur serveur");
+  }
+};
 
   const dossiersFiltrés = dossiers.filter(d => {
     const matchNom = d.nom_beneficiaire?.toLowerCase().includes(rechercheRegistre.toLowerCase());
@@ -187,10 +217,10 @@ export default function GestionDossiersDashboard() {
     return matchNom && matchDateDebut && matchDateFin;
   });
 
-const ouvrirFormulaire = (bloc) => {
+  const ouvrirFormulaire = (bloc) => {
     setPrestationTitre(bloc.titre);
-    setListePieces(bloc.pieces.map(p => ({ nom: p, cochee: false })));
-    setMontantAvenant(''); // Reset montant
+    setListePieces((bloc.pieces || []).map(p => ({ nom: p, cochee: false })));
+    setMontantAvenant('');
     setVueActive("formulaire");
     setAccuseReception(null);
     setNomRecherche('');
@@ -207,21 +237,18 @@ const ouvrirFormulaire = (bloc) => {
     setAccuseReception(null);
   };
 
-const handleSubmit = async () => {
+  const handleSubmit = async () => {
     if (!beneficiaireSelectionne || !fonctionChoisie || !toutesLesPiecesCochees) return;
     setIsSubmitting(true);
-    
     const isAvenant = prestationTitre.toLowerCase().includes("avenant");
     const piecesSelectionnees = listePieces.filter(p => p.cochee).map(p => p.nom);
-    
     const payload = {
       nom_beneficiaire: `${beneficiaireSelectionne.nomComplet} ${beneficiaireSelectionne.prenomComplet}`,
       type_prestation: prestationTitre,
       fonction: fonctionChoisie,
       pieces_deposees: piecesSelectionnees,
-      montant_avenant: isAvenant ? parseFloat(montantAvenant) || 0 : 0 // <--- ENVOI DU MONTANT
+      montant_avenant: isAvenant ? parseFloat(montantAvenant) || 0 : 0
     };
-
     try {
       const res = await axios.post(`${API_BASE}/dossiers/ajouter`, payload);
       setAccuseReception({
@@ -240,78 +267,9 @@ const handleSubmit = async () => {
     finally { setIsSubmitting(false); }
   };
 
-  // ── Composant liste de pièces réutilisable ────────────────────────────────
-  function PiecesManager({ pieces, onAdd, onDelete, onStartEdit, onSaveEdit, onCancelEdit, onChangeTempNom, inputValue, onInputChange, placeholder = "Nom du document..." }) {
-    return (
-      <div className="space-y-3">
-        {/* Liste des pièces existantes */}
-        <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
-          {pieces.length === 0 && (
-            <div className="text-center py-6 text-slate-400 text-sm font-medium bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
-              Aucun document requis pour l'instant
-            </div>
-          )}
-          {pieces.map((p, i) => (
-            <div key={p.id} className={`flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2.5 border-2 transition-all ${p.editing ? 'border-green-400 bg-green-50' : 'border-transparent'}`}>
-              <GripVertical size={14} className="text-gray-300 shrink-0" />
-              
-              {p.editing ? (
-                <>
-                  <input
-                    autoFocus
-                    value={p.tempNom ?? p.nom}
-                    onChange={e => onChangeTempNom(p.id, e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter') onSaveEdit(p.id); if (e.key === 'Escape') onCancelEdit(p.id); }}
-                    className="flex-1 bg-white border border-green-300 rounded-lg px-2 py-1 text-sm font-bold outline-none focus:ring-2 focus:ring-green-400"
-                  />
-                  <button onClick={() => onSaveEdit(p.id)} className="w-7 h-7 bg-green-600 text-white rounded-lg flex items-center justify-center hover:bg-green-700 transition shrink-0">
-                    <Check size={13} strokeWidth={3}/>
-                  </button>
-                  <button onClick={() => onCancelEdit(p.id)} className="w-7 h-7 bg-gray-200 text-gray-500 rounded-lg flex items-center justify-center hover:bg-gray-300 transition shrink-0">
-                    <X size={13}/>
-                  </button>
-                </>
-              ) : (
-                <>
-                  <span className="flex-1 text-sm font-bold text-slate-700 truncate">{p.nom}</span>
-                  <span className="text-[10px] font-black text-slate-300 mr-1">#{i + 1}</span>
-                  <button onClick={() => onStartEdit(p.id)} className="w-7 h-7 bg-white border border-gray-200 text-gray-400 rounded-lg flex items-center justify-center hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition shrink-0">
-                    <Pencil size={12}/>
-                  </button>
-                  <button onClick={() => onDelete(p.id)} className="w-7 h-7 bg-white border border-gray-200 text-gray-400 rounded-lg flex items-center justify-center hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition shrink-0">
-                    <Trash2 size={12}/>
-                  </button>
-                </>
-              )}
-            </div>
-          ))}
-        </div>
-
-        {/* Champ d'ajout */}
-        <div className="flex gap-2 mt-2">
-          <input
-            value={inputValue}
-            onChange={e => onInputChange(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') onAdd(); }}
-            placeholder={placeholder}
-            className="flex-1 bg-gray-50 border-2 border-dashed border-gray-300 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:border-green-400 focus:bg-green-50 transition-all placeholder-gray-300"
-          />
-          <button
-            onClick={onAdd}
-            disabled={!inputValue.trim()}
-            className="px-4 py-2.5 bg-green-700 text-white rounded-xl font-black text-sm hover:bg-green-800 transition disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1.5 shrink-0"
-          >
-            <Plus size={15}/> Ajouter
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="flex flex-col min-h-screen bg-[#F4F7FE] font-sans text-slate-900">
 
-      {/* ── TOPBAR ── */}
       <header className="bg-green-900 text-white sticky top-0 z-20 shadow-xl print:hidden">
         <div className="flex items-center justify-between px-8 h-16">
           <div className="flex items-center gap-3">
@@ -331,8 +289,6 @@ const handleSubmit = async () => {
       </header>
 
       <div className="flex flex-1 overflow-hidden">
-
-        {/* ── SIDEBAR ── */}
         {(vueActive === "dashboard" || vueActive === "formulaire") && (
           <aside className="w-64 bg-white border-r border-gray-100 shadow-sm flex-shrink-0 sticky top-16 h-[calc(100vh-4rem)] flex flex-col print:hidden">
             <div className="flex-1 overflow-y-auto p-5">
@@ -357,7 +313,6 @@ const handleSubmit = async () => {
                       </div>
                       <ChevronRight size={14} className="flex-shrink-0 opacity-50"/>
                     </button>
-                    {/* Bouton modifier — apparaît au hover */}
                     <button
                       onClick={(e) => ouvrirEditPrestation(e, b)}
                       title="Modifier cette prestation"
@@ -377,7 +332,6 @@ const handleSubmit = async () => {
           </aside>
         )}
 
-        {/* ── CONTENU ── */}
         <main className="flex-1 p-8 lg:p-12 overflow-y-auto print:p-0 print:bg-white">
 
           {vueActive === "dashboard" && (
@@ -418,7 +372,6 @@ const handleSubmit = async () => {
                         </div>
                       </div>
                     )}
-                    {/* ✅ AJOUT DU CHAMP MONTANT SI AVENANT */}
                     {prestationTitre.toLowerCase().includes("avenant") && (
                       <div className="bg-amber-50 p-6 rounded-[25px] border-2 border-amber-100 animate-in slide-in-from-top-2">
                         <div className="flex items-center gap-3 mb-4 text-amber-700">
@@ -491,37 +444,28 @@ const handleSubmit = async () => {
                       <th className="p-6 text-xs font-black uppercase border-b print:border-gray-300">Bénéficiaire</th>
                       <th className="p-6 text-xs font-black uppercase border-b print:border-gray-300">Catégorie</th>
                       <th className="p-6 text-xs font-black uppercase border-b print:border-gray-300">Prestation</th>
+                      <th className="p-6 text-xs font-black uppercase border-b print:border-gray-300">Avenant</th>
                       <th className="p-6 text-xs font-black uppercase border-b print:border-gray-300">Date Dépôt</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50 print:divide-gray-300">
-                      {dossiersFiltrés.map((d) => (
-                      <tr key={d.id} className="hover:bg-green-50/40">
-                          <td className="p-6 text-xs font-bold text-slate-400">#{d.id}</td>
-                         <td className="p-6 font-black text-slate-800">{d.nom_beneficiaire}</td>
-                         <td className="p-6 text-xs font-bold">{d.type_prestation}</td>
-                          <td className="p-6 text-center">
-                          {d.montant_avenant > 0 ? (
-                            <span className="bg-amber-100 text-amber-700 px-3 py-1.5 rounded-lg font-black text-xs">
-                              {d.montant_avenant.toLocaleString('fr-FR')} DA
-                            </span>
-                          ) : (
-                            <span className="text-slate-300 font-bold text-xs">—</span>
-                          )}
-                        </td>
-                        <td className="p-6 font-black text-xs">{new Date(d.createdAt).toLocaleDateString('fr-FR')}</td>
-                      </tr>
-                    ))}                    
                     {dossiersFiltrés.length > 0 ? dossiersFiltrés.map((d) => (
                       <tr key={d.id} className="hover:bg-green-50/40 transition-colors">
                         <td className="p-6"><span className="bg-gray-100 text-gray-500 px-2 py-1 rounded text-[10px] font-bold print:border print:bg-transparent">#{d.id}</span></td>
                         <td className="p-6"><p className="font-black text-slate-800 text-sm">{d.nom_beneficiaire}</p></td>
                         <td className="p-6"><span className="bg-blue-50 text-blue-600 px-3 py-1 rounded-full text-[10px] font-black uppercase print:border print:bg-transparent print:text-black">{d.fonction}</span></td>
                         <td className="p-6"><div className="flex items-center gap-2"><div className="text-green-700 scale-75 print:hidden">{getIcon(d.type_prestation)}</div><span className="font-bold text-xs text-slate-600">{d.type_prestation}</span></div></td>
+                        <td className="p-6">
+                          {d.montant_avenant > 0 ? (
+                            <span className="bg-amber-100 text-amber-700 px-3 py-1.5 rounded-lg font-black text-xs">{d.montant_avenant.toLocaleString('fr-FR')} DA</span>
+                          ) : (
+                            <span className="text-slate-300 font-bold text-xs">—</span>
+                          )}
+                        </td>
                         <td className="p-6"><p className="font-black text-slate-800 text-xs">{new Date(d.createdAt).toLocaleDateString('fr-FR')}</p><p className="text-[10px] text-slate-400 print:hidden">{new Date(d.createdAt).toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'})}</p></td>
                       </tr>
                     )) : (
-                      <tr><td colSpan="5" className="p-20 text-center text-slate-400 font-bold">Aucun dossier trouvé.</td></tr>
+                      <tr><td colSpan="6" className="p-20 text-center text-slate-400 font-bold">Aucun dossier trouvé.</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -548,6 +492,12 @@ const handleSubmit = async () => {
                         <div><p className="text-[10px] font-black text-slate-400 uppercase mb-1">Né(e) le</p><p className="font-bold text-slate-800">{accusereception.dateN}</p></div>
                         <div><p className="text-[10px] font-black text-slate-400 uppercase mb-1">À</p><p className="font-bold text-slate-800">{accusereception.lieuN}</p></div>
                       </div>
+                      {accusereception.montantAffichage > 0 && (
+                        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
+                          <p className="text-[10px] font-black text-amber-600 uppercase mb-1">Montant Avenant</p>
+                          <p className="font-black text-amber-800 text-base">{accusereception.montantAffichage.toLocaleString('fr-FR')} DA</p>
+                        </div>
+                      )}
                     </div>
                     <div className="bg-gray-50 p-6 rounded-3xl border border-gray-100">
                       <p className="text-[10px] font-black text-green-900 uppercase mb-4 underline">Documents fournis</p>
@@ -569,47 +519,26 @@ const handleSubmit = async () => {
         </main>
       </div>
 
-      {/* ══════════════════════════════════════════════════════════════════════
-          MODALE AJOUT PRESTATION — grande, avec gestion des pièces
-      ══════════════════════════════════════════════════════════════════════ */}
+      {/* MODALE AJOUT PRESTATION */}
       {showModalPrestation && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
           <div className="bg-white w-full max-w-2xl rounded-[32px] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 flex flex-col max-h-[90vh]">
-            
-            {/* Header */}
             <div className="bg-green-900 px-8 py-6 flex items-center justify-between shrink-0">
               <div>
                 <h3 className="text-xl font-black text-white uppercase tracking-tight">Nouvelle Prestation</h3>
                 <p className="text-green-300 text-xs font-bold mt-0.5">Définissez le titre et les documents requis</p>
               </div>
-              <button onClick={() => { setShowModalPrestation(false); setNewPrestationTitre(''); setNewPrestationPieces([]); setNewPieceInput(''); }} className="p-2 hover:bg-white/10 rounded-full transition-colors text-white">
-                <X size={20}/>
-              </button>
+              <button onClick={() => { setShowModalPrestation(false); setNewPrestationTitre(''); setNewPrestationPieces([]); setNewPieceInput(''); }} className="p-2 hover:bg-white/10 rounded-full transition-colors text-white"><X size={20}/></button>
             </div>
-
-            {/* Corps scrollable */}
             <div className="overflow-y-auto flex-1 p-8 space-y-7">
-              {/* Titre */}
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-green-900 uppercase tracking-widest">Titre de la prestation <span className="text-red-500">*</span></label>
-                <input
-                  className="w-full p-4 bg-gray-50 rounded-2xl outline-none font-bold text-slate-800 border-2 border-transparent focus:border-green-300 transition-all text-base"
-                  placeholder="ex: Aide médicale spécialisée"
-                  value={newPrestationTitre}
-                  onChange={e => setNewPrestationTitre(e.target.value)}
-                  autoFocus
-                />
+                <input className="w-full p-4 bg-gray-50 rounded-2xl outline-none font-bold text-slate-800 border-2 border-transparent focus:border-green-300 transition-all text-base" placeholder="ex: Aide médicale spécialisée" value={newPrestationTitre} onChange={e => setNewPrestationTitre(e.target.value)} autoFocus />
               </div>
-
-              {/* Documents requis */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <label className="text-[10px] font-black text-green-900 uppercase tracking-widest">
-                    Documents requis
-                  </label>
-                  <span className="text-[10px] font-bold bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
-                    {newPrestationPieces.length} document{newPrestationPieces.length !== 1 ? 's' : ''}
-                  </span>
+                  <label className="text-[10px] font-black text-green-900 uppercase tracking-widest">Documents requis</label>
+                  <span className="text-[10px] font-bold bg-green-100 text-green-700 px-2 py-0.5 rounded-full">{newPrestationPieces.length} document{newPrestationPieces.length !== 1 ? 's' : ''}</span>
                 </div>
                 <PiecesManager
                   pieces={newPrestationPieces}
@@ -618,67 +547,41 @@ const handleSubmit = async () => {
                   onStartEdit={startEditPieceNouveauForm}
                   onSaveEdit={saveEditPieceNouveauForm}
                   onCancelEdit={cancelEditPieceNouveauForm}
-                  onChangeTempNom={(id, val) => setNewPrestationPieces(prev => prev.map(p => p.id === id ? { ...p, tempNom: val } : p))}
+                  onChangeTempNom={changeTempNomNouveauForm}
                   inputValue={newPieceInput}
                   onInputChange={setNewPieceInput}
                   placeholder="ex: Demande manuscrite, Ordonnance..."
                 />
               </div>
             </div>
-
-            {/* Footer */}
             <div className="px-8 pb-7 pt-4 border-t border-gray-100 flex gap-3 shrink-0">
-              <button onClick={() => { setShowModalPrestation(false); setNewPrestationTitre(''); setNewPrestationPieces([]); setNewPieceInput(''); }} className="flex-1 py-3.5 rounded-2xl border-2 border-gray-100 text-slate-500 font-black text-sm hover:bg-gray-50 transition-all">
-                Annuler
-              </button>
-              <button onClick={ajouterPrestation} disabled={!newPrestationTitre.trim()} className="flex-1 py-3.5 rounded-2xl bg-green-900 text-white font-black text-sm shadow-lg disabled:opacity-30 hover:bg-green-800 transition-all flex items-center justify-center gap-2">
-                <Plus size={16}/> Créer la prestation
-              </button>
+              <button onClick={() => { setShowModalPrestation(false); setNewPrestationTitre(''); setNewPrestationPieces([]); setNewPieceInput(''); }} className="flex-1 py-3.5 rounded-2xl border-2 border-gray-100 text-slate-500 font-black text-sm hover:bg-gray-50 transition-all">Annuler</button>
+              <button onClick={ajouterPrestation} disabled={!newPrestationTitre.trim()} className="flex-1 py-3.5 rounded-2xl bg-green-900 text-white font-black text-sm shadow-lg disabled:opacity-30 hover:bg-green-800 transition-all flex items-center justify-center gap-2"><Plus size={16}/> Créer la prestation</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ══════════════════════════════════════════════════════════════════════
-          MODALE MODIFICATION PRESTATION — grande, avec gestion des pièces
-      ══════════════════════════════════════════════════════════════════════ */}
+      {/* MODALE MODIFICATION PRESTATION */}
       {showModalEdit && editPrestation && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
           <div className="bg-white w-full max-w-2xl rounded-[32px] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 flex flex-col max-h-[90vh]">
-            
-            {/* Header */}
             <div className="bg-blue-700 px-8 py-6 flex items-center justify-between shrink-0">
               <div>
                 <h3 className="text-xl font-black text-white uppercase tracking-tight">Modifier la Prestation</h3>
                 <p className="text-blue-200 text-xs font-bold mt-0.5">Modifiez le titre ou les documents requis</p>
               </div>
-              <button onClick={() => { setShowModalEdit(false); setEditPrestation(null); }} className="p-2 hover:bg-white/10 rounded-full transition-colors text-white">
-                <X size={20}/>
-              </button>
+              <button onClick={() => { setShowModalEdit(false); setEditPrestation(null); }} className="p-2 hover:bg-white/10 rounded-full transition-colors text-white"><X size={20}/></button>
             </div>
-
-            {/* Corps scrollable */}
             <div className="overflow-y-auto flex-1 p-8 space-y-7">
-              {/* Titre */}
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-blue-700 uppercase tracking-widest">Titre de la prestation <span className="text-red-500">*</span></label>
-                <input
-                  className="w-full p-4 bg-gray-50 rounded-2xl outline-none font-bold text-slate-800 border-2 border-transparent focus:border-blue-300 transition-all text-base"
-                  value={editTitre}
-                  onChange={e => setEditTitre(e.target.value)}
-                  autoFocus
-                />
+                <input className="w-full p-4 bg-gray-50 rounded-2xl outline-none font-bold text-slate-800 border-2 border-transparent focus:border-blue-300 transition-all text-base" value={editTitre} onChange={e => setEditTitre(e.target.value)} autoFocus />
               </div>
-
-              {/* Documents requis */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <label className="text-[10px] font-black text-blue-700 uppercase tracking-widest">
-                    Documents requis
-                  </label>
-                  <span className="text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
-                    {editPieces.length} document{editPieces.length !== 1 ? 's' : ''}
-                  </span>
+                  <label className="text-[10px] font-black text-blue-700 uppercase tracking-widest">Documents requis</label>
+                  <span className="text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">{editPieces.length} document{editPieces.length !== 1 ? 's' : ''}</span>
                 </div>
                 <PiecesManager
                   pieces={editPieces}
@@ -687,22 +590,16 @@ const handleSubmit = async () => {
                   onStartEdit={startEditPieceEdit}
                   onSaveEdit={saveEditPieceEdit}
                   onCancelEdit={cancelEditPieceEdit}
-                  onChangeTempNom={(id, val) => setEditPieces(prev => prev.map(p => p.id === id ? { ...p, tempNom: val } : p))}
+                  onChangeTempNom={changeTempNomEdit}
                   inputValue={editPieceInput}
                   onInputChange={setEditPieceInput}
                   placeholder="Ajouter un document..."
                 />
               </div>
             </div>
-
-            {/* Footer */}
             <div className="px-8 pb-7 pt-4 border-t border-gray-100 flex gap-3 shrink-0">
-              <button onClick={() => { setShowModalEdit(false); setEditPrestation(null); }} className="flex-1 py-3.5 rounded-2xl border-2 border-gray-100 text-slate-500 font-black text-sm hover:bg-gray-50 transition-all">
-                Annuler
-              </button>
-              <button onClick={sauvegarderModification} disabled={!editTitre.trim()} className="flex-1 py-3.5 rounded-2xl bg-blue-700 text-white font-black text-sm shadow-lg disabled:opacity-30 hover:bg-blue-800 transition-all flex items-center justify-center gap-2">
-                <Check size={16}/> Sauvegarder les modifications
-              </button>
+              <button onClick={() => { setShowModalEdit(false); setEditPrestation(null); }} className="flex-1 py-3.5 rounded-2xl border-2 border-gray-100 text-slate-500 font-black text-sm hover:bg-gray-50 transition-all">Annuler</button>
+              <button onClick={sauvegarderModification} disabled={!editTitre.trim()} className="flex-1 py-3.5 rounded-2xl bg-blue-700 text-white font-black text-sm shadow-lg disabled:opacity-30 hover:bg-blue-800 transition-all flex items-center justify-center gap-2"><Check size={16}/> Sauvegarder les modifications</button>
             </div>
           </div>
         </div>

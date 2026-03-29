@@ -1,7 +1,5 @@
-// models/Prestation.js
 const { DataTypes } = require("sequelize");
-const { sequelize } = require("../config/db"); // Vérifie bien ce chemin
-
+const { sequelize } = require("../config/db");
 const Prestation = sequelize.define('Prestation', {
   titre: {
     type: DataTypes.STRING,
@@ -9,12 +7,8 @@ const Prestation = sequelize.define('Prestation', {
   },
   pieces: {
     type: DataTypes.JSON, 
-    allowNull: false,
-    defaultValue: []
+    allowNull: true
   }
-}, {
-  tableName: 'prestations',
-  timestamps: true
 });
 
-module.exports = Prestation; // <--- Exportation directe
+module.exports = Prestation;
