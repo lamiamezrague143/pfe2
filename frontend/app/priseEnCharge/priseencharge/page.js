@@ -43,6 +43,24 @@ function DossierModal({ demande, onClose, onDecision }) {
       setLoading(false);
     }
   };
+  //annuler la prise 
+  const annulerPrise = async (id) => {
+  if (!window.confirm("Voulez-vous annuler cette prise en charge ?")) return;
+
+  try {
+    await axios.put(`http://localhost:5001/api/prise-en-charge/annuler/${id}`);
+    alert("✅ Prise en charge annulée");
+
+    // Recharge la liste
+    const res = await fetch("http://localhost:5001/api/prise-en-charge/all");
+    const data = await res.json();
+    setHistory(data);
+
+  } catch (err) {
+    console.error(err);
+    alert("❌ Erreur lors de l'annulation");
+  }
+};
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
@@ -765,6 +783,7 @@ const handleSave = async () => {
                     <th className="p-3">Prestation</th>
                     <th className="p-3 text-right">Montant</th>
                     <th className="p-3">Date</th>
+                    <th className="p-3 text-center">Action</th> 
                   </tr>
                 </thead>
                 <tbody>
@@ -787,6 +806,14 @@ const handleSave = async () => {
     </td>
  
     <td className="p-3 text-gray-500">{new Date(item.createdAt).toLocaleDateString('fr-FR')}</td>
+
+    {/* annuler */}
+     <td className="p-3 text-center">
+      <button
+        onClick={() => annulerPrise(item.id)} className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600">
+        Annuler
+    </button>
+    </td>
   </tr>
 ))}
                 </tbody>

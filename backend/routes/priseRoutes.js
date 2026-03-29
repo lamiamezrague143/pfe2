@@ -93,5 +93,22 @@ router.delete("/:id", async (req, res) => {
     res.status(500).json({ message: "Erreur suppression" });
   }
 });
+//annuler la prise en charge 
+router.put('/annuler/:id', async (req, res) => {
+  try {
+    const prise = await PriseEnCharge.findByPk(req.params.id);
 
+    if (!prise) {
+      return res.status(404).json({ message: "Introuvable" });
+    }
+
+    await prise.update({ statut: "Annulée" });
+
+    res.json({ message: "Prise en charge annulée" });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
 module.exports = router;
