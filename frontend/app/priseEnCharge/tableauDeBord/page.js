@@ -42,7 +42,6 @@ const PieChart = ({ title, data, colors }) => {
           )}
           <circle cx="0" cy="0" r="0.6" fill="white" />
         </svg>
-        {/* Le texte est placé en absolute par-dessus le SVG pour éviter les erreurs de rendu */}
         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
             <span className="text-xl font-black text-gray-800">{total}</span>
             <span className="text-[10px] uppercase text-gray-400 font-bold">Total</span>
@@ -78,8 +77,7 @@ export default function TableauDeBord() {
   const [plafondDentaire, setPlafondDentaire] = useState(50000);
   const [plafondOphta,    setPlafondOphta]    = useState(50000);
 
-  useEffect(() => {
-    const fetchData = async () => {
+const fetchData = async () => {
       try {
         const resSet = await fetch("http://localhost:5001/api/settings");
         if (resSet.ok) {
@@ -113,8 +111,10 @@ export default function TableauDeBord() {
         setLoading(false);
       }
     };
-    fetchData();
-  }, []);
+
+useEffect(() => {
+  fetchData();
+}, []);
 
   const updatePlafondDB = async (key, value) => {
     const val = Number(value);
@@ -130,20 +130,15 @@ export default function TableauDeBord() {
     } catch (err) { console.error("Erreur de sauvegarde:", err); }
   };
 
-// ── Stats graphiques (Version Ultra-Robuste) ──
-// ── Stats graphiques (Correction de la détection des grades) ──
 const statsGrades = history.reduce((acc, curr) => {
-  // 1. On récupère la valeur brute (on vérifie toutes les clés possibles)
   const fonctionRaw = 
     curr.pieces?.fonction || 
     curr.fFonction || 
     curr.fonction || 
     "";
     
-  // 2. On nettoie la chaîne pour la comparaison
   const f = String(fonctionRaw).toUpperCase().trim();
 
-  // 3. Logique de tri améliorée
   if (f.includes("ATS") || f.includes("ADMINISTRATIF") || f.includes("TECHNIQUE")) {
     acc["ATS"]++;
   } 
@@ -154,7 +149,6 @@ const statsGrades = history.reduce((acc, curr) => {
     acc["RETRAITE"]++;
   } 
   else if (f !== "") {
-    // Si c'est un autre grade non répertorié
     acc["AUTRES"] = (acc["AUTRES"] || 0) + 1;
   }
   
@@ -162,7 +156,14 @@ const statsGrades = history.reduce((acc, curr) => {
 }, { "ATS": 0, "ENSEIGNANT": 0, "RETRAITE": 0, "AUTRES": 0 });
 
 const statsPrestations = history.reduce((acc, curr) => {
-  if (curr.status === "annulé") return acc;
+  const status = (curr.status || "").toLowerCase().trim();
+
+if (
+  status.includes("annul") ||
+  status.includes("cancel") ||
+  status.includes("refus")
+)
+    return acc;
 
   const p = curr.titre || curr.prestation;
   if (!p) return acc;
@@ -187,44 +188,53 @@ const statsPrestations = history.reduce((acc, curr) => {
     return acc;
   }, {});
 
-  const clientsRegroupes = history.reduce((acc, curr) => {
-    if (curr.status === "annulé") return acc;
-    const clientKey  = (curr.pieces?.patient || `${curr.pNom} ${curr.pPrenom}`).toUpperCase().trim();
-    const montantBrut = parseFloat(curr.pieces?.montant || curr.montantTotal || 0);
+const clientsRegroupes = history.reduce((acc, curr) => {
+  // On récupère le nom du patient (pNom + pPrenom)
+  const clientKey = `${curr.pNom || ''} ${curr.pPrenom || ''}`.toUpperCase().trim() || "INCONNU";
+  
+  // On utilise montantTotal car c'est ce qui est défini dans ton modèle
+  const montant = parseFloat(curr.montantTotal || 0);
+  const titrePrest = curr.prestation || "Sans titre";
+  const prestUpper = titrePrest.toUpperCase();
 
-// ❌ on ignore les annulés
-if (curr.status === "annulé") return acc;
+  // 1. Déterminer la catégorie
+  let category = "general";
+  if (prestUpper.includes("DENT")) category = "dentaire";
+  else if (prestUpper.includes("OPHTA") || prestUpper.includes("OEIL")) category = "ophtalmique";
 
-const montant = montantBrut;
-    const titrePrest = curr.titre || curr.prestation || "";
-    const prestUpper = titrePrest.toUpperCase();
+  const target = acc[category];
+  if (!target[clientKey]) {
+    target[clientKey] = {
+      nom: clientKey,
+      prises: [],
+      prisesAnnulees: [],
+      avenants: [],
+      totalConsomme: 0,
+    };
+  }
 
-    let category = "general";
-    if (prestUpper.includes("DENT")) category = "dentaire";
-    else if (prestUpper.includes("OPHTA") || prestUpper.includes("OEIL")) category = "ophtalmique";
+  // 2. Vérification du statut (on utilise soit le Boolean 'annule', soit le texte 'Annulée')
+  const estAnnulee = curr.annule === true || curr.statut === 'Annulée';
 
-    const target = acc[category];
-    if (!target[clientKey]) {
-      target[clientKey] = {
-        nom: clientKey,
-        prenom: "",
-        prises: [],
-        avenants: [],
-        totalConsomme: 0,
-      };
-    }
+  if (estAnnulee) {
+    // AJOUT DANS LE TABLEAU (Colonnes rouges) MAIS PAS DANS LE TOTAL
+    target[clientKey].prisesAnnulees.push({
+      montant,
+      prestation: titrePrest,
+      status: 'Annulée'
+    });
+  } else {
+    // AJOUT DANS LE TABLEAU (Colonnes bleues) ET DANS LE TOTAL
     target[clientKey].prises.push({
-  montant,
-  prestation: titrePrest,
-  status: curr.status || "actif"
-});
-    if (curr.status !== "annulé") {
-  target[clientKey].totalConsomme += montant;
-}
+      montant,
+      prestation: titrePrest,
+      status: 'Active'
+    });
+    target[clientKey].totalConsomme += montant;
+  }
 
-    return acc;
-  }, { general: {}, dentaire: {}, ophtalmique: {} });
-
+  return acc;
+}, { general: {}, dentaire: {}, ophtalmique: {} });
   Object.entries(avenantsByClient).forEach(([clientKey, data]) => {
     data.avenants.forEach(av => {
       const cat    = av.category;
@@ -234,6 +244,7 @@ const montant = montantBrut;
           nom: clientKey,
           prenom: "",
           prises: [],
+          prisesAnnulees: [],
           avenants: [],
           totalConsomme: 0,
         };
@@ -251,98 +262,172 @@ const montant = montantBrut;
   };
 
   const renderTable = (data, title, plafondMax, colorBorder) => {
-    const clients  = Object.values(data);
-const filtered = clients.filter(client =>
-  (client.nom || "").toLowerCase().includes(searchTerm.toLowerCase())
-);
-    const maxPrises   = clients.reduce((max, c) => Math.max(max, c.prises.length), 0) || 1;
-    const maxAvenants = clients.reduce((max, c) => Math.max(max, c.avenants.length), 0);
+  const clients  = Object.values(data);
 
-    const priseColumns   = Array.from({ length: maxPrises   }, (_, i) => i + 1);
-    const avenantColumns = Array.from({ length: maxAvenants }, (_, i) => i + 1);
-    const hasAnyAvenant = maxAvenants > 0;
+  const filtered = clients.filter(client =>
+    (client.nom || "").toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
-    return (
-      <div className="mb-12">
-        <div className={`flex justify-between items-center mb-4 border-l-8 ${colorBorder} pl-4`}>
-          <h2 className="text-xl font-black text-gray-800 uppercase tracking-tight">{title}</h2>
-          <span className="text-xs font-bold text-gray-500 bg-gray-100 px-3 py-1 rounded-full border">
-            PLAFOND {new Date().getFullYear()}: {plafondMax.toLocaleString()} DA
-          </span>
-        </div>
+  const maxPrises = clients.reduce((max, c) => Math.max(max, c.prises.length), 0) || 1;
+  const maxAvenants = clients.reduce((max, c) => Math.max(max, c.avenants.length), 0);
 
-        <div className="bg-white rounded-xl shadow-xl overflow-x-auto border border-gray-200">
-          <table className="w-full text-left min-w-[1000px]">
-            <thead>
-              <tr className="bg-blue-900 text-white text-[10px] uppercase tracking-widest">
-                <th className="p-4 sticky left-0 bg-blue-900 z-10 shadow-md">Bénéficiaire</th>
-                {priseColumns.map(num => (
-                  <th key={`ph-${num}`} className="p-4 border-l border-blue-800 text-center">Prise {num}</th>
-                ))}
-                {hasAnyAvenant && avenantColumns.map(num => (
-                  <th key={`ah-${num}`} className="p-4 border-l border-amber-500 text-center bg-amber-800/30 text-amber-200">Avenant {num}</th>
-                ))}
-                <th className="p-4 text-center border-l border-blue-800 bg-blue-950">Consommé</th>
-                <th className="p-4 text-center border-l border-blue-800">Reste</th>
-                <th className="p-4 text-center border-l border-blue-800">Statut</th>
+  const maxAnnulees = clients.reduce(
+    (max, c) => Math.max(max, (c.prisesAnnulees || []).length),
+    0
+  );
+
+  const priseColumns   = Array.from({ length: maxPrises }, (_, i) => i + 1);
+  const avenantColumns = Array.from({ length: maxAvenants }, (_, i) => i + 1);
+  const annuleeColumns = Array.from({ length: maxAnnulees }, (_, i) => i + 1);
+
+  const hasAnyAvenant = maxAvenants > 0;
+  const hasAnyAnnulee = maxAnnulees > 0;
+
+  return (
+    <div className="mb-12">
+      <div className={`flex justify-between items-center mb-4 border-l-8 ${colorBorder} pl-4`}>
+        <h2 className="text-xl font-black text-gray-800 uppercase tracking-tight">{title}</h2>
+        <span className="text-xs font-bold text-gray-500 bg-gray-100 px-3 py-1 rounded-full border">
+          PLAFOND {new Date().getFullYear()}: {plafondMax.toLocaleString()} DA
+        </span>
+      </div>
+
+      <div className="bg-white rounded-xl shadow-xl overflow-x-auto border border-gray-200">
+        <table className="w-full text-left min-w-[1000px]">
+          <thead>
+            <tr className="bg-blue-900 text-white text-[10px] uppercase tracking-widest">
+              <th className="p-4 sticky left-0 bg-blue-900 z-10 shadow-md">Bénéficiaire</th>
+
+              {priseColumns.map(num => (
+                <th key={`ph-${num}`} className="p-4 border-l border-blue-800 text-center">
+                  Prise {num}
+                </th>
+              ))}
+
+              {hasAnyAvenant && avenantColumns.map(num => (
+                <th key={`ah-${num}`} className="p-4 border-l border-amber-500 text-center bg-amber-800/30 text-amber-200">
+                  Avenant {num}
+                </th>
+              ))}
+
+              {hasAnyAnnulee && annuleeColumns.map(num => (
+                <th key={`xh-${num}`} className="p-4 border-l border-red-400 text-center bg-red-900/30 text-red-200">
+                  Prise Annulée {num}
+                </th>
+              ))}
+
+              <th className="p-4 text-center border-l border-blue-800 bg-blue-950">Consommé</th>
+              <th className="p-4 text-center border-l border-blue-800">Reste</th>
+              <th className="p-4 text-center border-l border-blue-800">Statut</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {filtered.length === 0 ? (
+              <tr>
+                <td
+                  colSpan={
+                    1 +
+                    priseColumns.length +
+                    (hasAnyAvenant ? avenantColumns.length : 0) +
+                    (hasAnyAnnulee ? annuleeColumns.length : 0) +
+                    3
+                  }
+                  className="p-10 text-center text-gray-400 italic"
+                >
+                  Aucune donnée trouvée.
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={1 + priseColumns.length + (hasAnyAvenant ? avenantColumns.length : 0) + 3} className="p-10 text-center text-gray-400 italic">
-                    Aucune donnée trouvée.
-                  </td>
-                </tr>
-              ) : filtered.map((client, idx) => {
+            ) : (
+              filtered.map((client, idx) => {
                 const status = getStatus(client.totalConsomme, plafondMax);
                 const reste  = Math.max(0, plafondMax - client.totalConsomme);
+
                 return (
                   <tr key={idx} className={`border-b border-gray-50 ${status.row} transition-colors hover:bg-blue-50/30`}>
                     <td className="p-4 sticky left-0 bg-inherit z-10 font-black text-gray-800 uppercase text-[11px] border-r">
                       {client.nom}
                     </td>
+
+                    {/* PRISES */}
                     {priseColumns.map((_, i) => {
                       const prise = client.prises[i];
                       return (
                         <td key={`pc-${i}`} className="p-4 text-center border-l border-gray-100 min-w-[130px]">
                           {prise ? (
-  <div className="flex flex-col items-center">
-    <span className="text-[9px] font-bold text-gray-400 uppercase leading-tight">
-      {prise.prestation}
-    </span>
+                            <div className="flex flex-col items-center">
+                              <span className="text-[9px] font-bold text-gray-400 uppercase leading-tight">
+                                {prise.prestation}
+                              </span>
 
-    <span className={`text-[11px] font-black ${prise.status === "annulé" ? "text-red-500 line-through" : "text-blue-700"}`}>
-      {prise.montant.toLocaleString()} DA
-    </span>
+                              <span className={`text-[11px] font-black ${prise.status.toLowerCase().includes("annul") ? "text-red-500 line-through" : "text-blue-700"}`}>
+                                {prise.montant.toLocaleString()} DA
+                              </span>
 
-    {prise.status === "annulé" && (
-      <span className="text-[8px] text-red-500 font-bold">ANNULÉ</span>
-    )}
-  </div>
-) :  <span className="text-gray-300 text-[10px]">—</span>}
+                              {prise.status.toLowerCase().includes("annul") && (
+  <span className="text-[8px] text-red-500 font-bold">ANNULÉ</span>
+)}
+                            </div>
+                          ) : (
+                            <span className="text-gray-300 text-[10px]">—</span>
+                          )}
                         </td>
                       );
                     })}
+
+                    {/* AVENANTS */}
                     {hasAnyAvenant && avenantColumns.map((_, i) => {
                       const av = client.avenants[i];
                       return (
                         <td key={`ac-${i}`} className={`p-4 text-center border-l border-amber-100 min-w-[120px] ${av ? 'bg-amber-50' : ''}`}>
                           {av ? (
                             <div className="flex flex-col items-center">
-                              <span className="text-[9px] font-bold text-amber-400 uppercase leading-tight">{av.prestation}</span>
-                              <span className="text-[11px] font-black text-amber-700">+{av.montant.toLocaleString()} DA</span>
+                              <span className="text-[9px] font-bold text-amber-400 uppercase leading-tight">
+                                {av.prestation}
+                              </span>
+                              <span className="text-[11px] font-black text-amber-700">
+                                +{av.montant.toLocaleString()} DA
+                              </span>
                             </div>
-                          ) : <span className="text-gray-300 text-[10px]">—</span>}
+                          ) : (
+                            <span className="text-gray-300 text-[10px]">—</span>
+                          )}
                         </td>
                       );
                     })}
+
+                    {/* ANNULÉES */}
+                    {hasAnyAnnulee && annuleeColumns.map((_, i) => {
+                      const ann = (client.prisesAnnulees || [])[i];
+                      return (
+                        <td key={`xc-${i}`} className={`p-4 text-center border-l border-red-100 min-w-[130px] ${ann ? 'bg-red-50' : ''}`}>
+                          {ann ? (
+                            <div className="flex flex-col items-center">
+                              <span className="text-[9px] font-bold text-red-300 uppercase leading-tight">
+                                {ann.prestation}
+                              </span>
+                              <span className="text-[11px] font-black text-red-500 line-through">
+                                {ann.montant.toLocaleString()} DA
+                              </span>
+                              <span className="text-[8px] text-red-400 font-black">
+                                ANNULÉ
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-gray-300 text-[10px]">—</span>
+                          )}
+                        </td>
+                      );
+                    })}
+
                     <td className={`p-4 text-center font-black border-l border-gray-200 ${status.zone}`}>
                       {client.totalConsomme.toLocaleString()} DA
                     </td>
+
                     <td className="p-4 text-center font-bold text-gray-400">
                       {reste.toLocaleString()} DA
                     </td>
+
                     <td className="p-4 text-center">
                       <span className={`${status.color} text-white text-[8px] px-2 py-0.5 rounded-full font-black`}>
                         {status.text}
@@ -350,13 +435,14 @@ const filtered = clients.filter(client =>
                     </td>
                   </tr>
                 );
-              })}
-            </tbody>
-          </table>
-        </div>
+              })
+            )}
+          </tbody>
+        </table>
       </div>
-    );
-  };
+    </div>
+  );
+};
 
   if (loading) return <div className="p-10 text-center font-bold text-gray-400 animate-pulse">Chargement des données...</div>;
 

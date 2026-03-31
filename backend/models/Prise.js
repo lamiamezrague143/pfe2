@@ -63,6 +63,10 @@ const Prise = sequelize.define("Prise", {
   type: DataTypes.ENUM('Active', 'Annulée'),
   defaultValue: 'Active'
 },
+annule: {
+  type: DataTypes.BOOLEAN,
+  defaultValue: false
+},
 
 }, {
   tableName: "prises_en_charge",

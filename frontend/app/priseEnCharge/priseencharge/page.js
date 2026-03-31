@@ -245,6 +245,7 @@ const getLastDayOfMonth = () => {
           const allData = await resHistory.json();
           const currentYear = new Date().getFullYear();
           setHistory(allData.filter(item => new Date(item.createdAt).getFullYear() === currentYear));
+          console.log("DATA BACKEND 👉", allData); // ✅ ici
         }
       } catch (err) { console.error("ERREUR RÉSEAU:", err); }
     };
@@ -305,18 +306,19 @@ const getLastDayOfMonth = () => {
     if (isDentaire) plafondApplique = plafondDent;
     if (isOphta)    plafondApplique = plafondOphta;
 
-    const totalConsomme = history
-      .filter(item => {
-        if (!item.pNom || !item.pPrenom || !item.prestation) return false;
-        const sameUser = item.pNom.toUpperCase() === user.nomComplet.toUpperCase() &&
-                         item.pPrenom.toUpperCase() === user.prenomComplet.toUpperCase();
-        if (!sameUser) return false;
-        const itemPrest = item.prestation.toUpperCase();
-        if (isDentaire) return itemPrest.includes("DENT");
-        if (isOphta)    return itemPrest.includes("OPHTA") || itemPrest.includes("OEIL");
-        return !itemPrest.includes("DENT") && !itemPrest.includes("OPHTA") && !itemPrest.includes("OEIL");
-      })
-      .reduce((sum, item) => sum + parseFloat(item.montantTotal || 0), 0);
+const totalConsomme = history
+  .filter(item => {
+    if (item.annule) return false;  // ← AJOUTER CETTE LIGNE
+    if (!item.pNom || !item.pPrenom || !item.prestation) return false;
+    const sameUser = item.pNom.toUpperCase() === user.nomComplet.toUpperCase() &&
+                     item.pPrenom.toUpperCase() === user.prenomComplet.toUpperCase();
+    if (!sameUser) return false;
+    const itemPrest = item.prestation.toUpperCase();
+    if (isDentaire) return itemPrest.includes("DENT");
+    if (isOphta)    return itemPrest.includes("OPHTA") || itemPrest.includes("OEIL");
+    return !itemPrest.includes("DENT") && !itemPrest.includes("OPHTA") && !itemPrest.includes("OEIL");
+  })
+  .reduce((sum, item) => sum + parseFloat(item.montantTotal || 0), 0);
 
     const solde = plafondApplique - totalConsomme;
     setResteDisponible(solde);
@@ -481,6 +483,23 @@ const annulerPrise = async (id) => {
 
   return (
     <div className="min-h-screen bg-gray-100 py-4 font-serif print:bg-white print:p-0">
+<style>{`
+  @media print {
+    .tabs-nav { display: none !important; }
+    .tab-en-ligne { display: none !important; }
+    .tab-consulter { display: none !important; }
+    
+    /* Cache la navbar de l'app parent (SG/COS, Dashboard...) */
+    nav, header { display: none !important; }
+    
+    /* Cache les selects et affiche juste le texte */
+    select { display: none !important; }
+    .print-value { display: inline !important; }
+    
+    @page { margin: 10mm; }
+  }
+  .print-value { display: none; }
+`}</style>
 
       {/* Modal de décision */}
       {showModal && (
@@ -492,7 +511,7 @@ const annulerPrise = async (id) => {
       )}
 
       {/* ── ONGLETS ── */}
-      <div className="mx-auto w-[210mm] flex gap-2 mb-4 print:hidden px-2">
+      <div className="tabs-nav mx-auto w-[210mm] flex gap-2 mb-4 print:hidden px-2">
         {[
           { key: "ajouter",   label: "👤+ Ajouter Prise en Charge", color: "green" },
           { key: "consulter", label: "📋 Consulter la Liste",        color: "blue"  },
@@ -525,8 +544,8 @@ const annulerPrise = async (id) => {
       </div>
 
       {/* ── ONGLET : DEMANDES EN LIGNE ── */}
-      {activeTab === "en_ligne" && (
-        <div className="mx-auto w-full max-w-6xl px-4">
+{activeTab === "en_ligne" && (
+  <div className="tab-en-ligne mx-auto w-full max-w-6xl px-4">
 
           {/* Stats */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
@@ -755,7 +774,6 @@ const annulerPrise = async (id) => {
                   <div className="text-center min-w-[250px]">
                     <p className="font-bold italic mb-1 text-[11px]">La Clinique / Le Laboratoire</p>
                     <select name="sfEtablissement" value={formData.sfEtablissement} onChange={handleChange} className="w-full text-center font-black text-red-700 bg-transparent border-b border-black outline-none uppercase">
-                      <option value="">-- Choisir l'établissement --</option>
                       {cliniques.map((c) => (<option key={c.id} value={c.id}>{c.nom || c.nom_clinique}</option>))}
                     </select>
                   </div>
@@ -767,8 +785,8 @@ const annulerPrise = async (id) => {
       )}
 
       {/* ── ONGLET : HISTORIQUE ── */}
-      {activeTab === "consulter" && (
-        <div className="mx-auto w-[210mm] bg-white p-8 rounded-lg shadow-lg border border-gray-200 min-h-[600px]">
+{activeTab === "consulter" && (
+  <div className="tab-consulter mx-auto w-[210mm] bg-white p-8 rounded-lg  border border-gray-200 min-h-[600px]">
           <h2 className="text-xl font-bold border-b pb-4 mb-6 text-blue-800 flex justify-between items-center">
             <span>Historique des prises en charge ({new Date().getFullYear()})</span>
             <span className="text-sm bg-blue-100 px-3 py-1 rounded text-blue-600">{history.length} entrées</span>
@@ -790,32 +808,37 @@ const annulerPrise = async (id) => {
                 </thead>
                 <tbody>
 {history.map((item) => (
-  <tr key={item.id} className="border-b hover:bg-blue-50 transition-colors">
+  <tr key={item.id} className={`border-b transition-colors ${item.annule ? 'bg-red-50 opacity-60' : 'hover:bg-blue-50'}`}>
     {/* ✅ ref est un champ direct du modèle Prise */}
-    <td className="p-3 font-mono font-bold">{item.ref || item.numeroSequentiel || "—"}</td>
- 
-    {/* ✅ Patient = pNom + pPrenom */}
-    <td className="p-3 uppercase font-bold">
-      {item.pNom} {item.pPrenom}
-    </td>
- 
-    {/* ✅ prestation est un champ direct */}
-    <td className="p-3">{item.prestation}</td>
- 
-    {/* ✅ montantTotal est un champ direct */}
-    <td className="p-3 text-right font-bold text-blue-900">
-      {(item.montantTotal || 0).toLocaleString('fr-FR')} DA
-    </td>
- 
-    <td className="p-3 text-gray-500">{new Date(item.createdAt).toLocaleDateString('fr-FR')}</td>
+<td className="p-3 font-mono font-bold">
+  <span className={item.annule ? 'line-through text-gray-400' : ''}>{item.ref || item.numeroSequentiel || "—"}</span>
+</td>
 
-    {/* annuler */}
-     <td className="p-3 text-center">
-      <button
-        onClick={() => annulerPrise(item.id)} className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600">
-        Annuler
+<td className="p-3 uppercase font-bold">
+  <span className={item.annule ? 'line-through text-gray-400' : ''}>{item.pNom} {item.pPrenom}</span>
+</td>
+
+<td className="p-3">
+  <span className={item.annule ? 'line-through text-gray-400' : ''}>{item.prestation}</span>
+</td>
+
+<td className="p-3 text-right font-bold text-blue-900">
+  <span className={item.annule ? 'line-through text-gray-400' : ''}>{(item.montantTotal || 0).toLocaleString('fr-FR')} DA</span>
+</td>
+
+<td className="p-3 text-gray-500">
+  <span className={item.annule ? 'line-through text-gray-400' : ''}>{new Date(item.createdAt).toLocaleDateString('fr-FR')}</span>
+</td>
+
+<td className="p-3 text-center">
+  {item.annule ? (
+    <span className="text-red-400 text-[11px] font-bold italic">Annulée</span>
+  ) : (
+    <button onClick={() => annulerPrise(item.id)} className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600">
+      Annuler
     </button>
-    </td>
+  )}
+</td>
   </tr>
 ))}
                 </tbody>

@@ -117,7 +117,8 @@ router.put("/annuler/:id", async (req, res) => {
       return res.status(404).json({ message: "Prise introuvable" });
     }
 
-    prise.status = "annulé";
+    prise.status = "annulé";   // ← ce que tu avais déjà
+    prise.annule = true; 
     await prise.save();
 
     res.json({ message: "Annulé avec succès" });
