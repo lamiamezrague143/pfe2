@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import {
   Send, Clock, CheckCircle, XCircle, MessageSquare,
-  FileText, AlertCircle, Upload, X, Paperclip, Eye
+  FileText, AlertCircle, Upload, X, Paperclip, Eye, User
 } from "lucide-react";
 
 const API_BASE = "http://localhost:5001/api";
@@ -88,7 +88,7 @@ function Field({ label, required, children }) {
 const inputCls = "w-full border border-gray-300 rounded px-3 py-2 text-sm text-gray-800 outline-none focus:border-green-600 focus:ring-1 focus:ring-green-600 transition placeholder-gray-400 bg-white";
 const selectCls = `${inputCls} cursor-pointer`;
 
-// ─── ZONE UPLOAD FICHIERS (illimité) ─────────────────────────────────────────
+// ─── ZONE UPLOAD FICHIERS ─────────────────────────────────────────────────────
 function FileUploadZone({ files, onChange, label, accept = "*" }) {
   const inputRef = useRef(null);
 
@@ -122,7 +122,6 @@ function FileUploadZone({ files, onChange, label, accept = "*" }) {
 
   return (
     <div className="space-y-2">
-      {/* Zone de dépôt */}
       <div
         onDrop={handleDrop}
         onDragOver={(e) => e.preventDefault()}
@@ -144,7 +143,6 @@ function FileUploadZone({ files, onChange, label, accept = "*" }) {
         />
       </div>
 
-      {/* Liste des fichiers uploadés */}
       {files.length > 0 && (
         <div className="space-y-1.5">
           {files.map((file, i) => (
@@ -170,6 +168,44 @@ function FileUploadZone({ files, onChange, label, accept = "*" }) {
   );
 }
 
+// ─── MODAL PIÈCES JOINTES ─────────────────────────────────────────────────────
+function PiecesModal({ pieces, onClose }) {
+  if (!pieces || pieces.length === 0) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-2xl p-6 max-w-sm w-full mx-4" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-bold text-gray-800 text-sm">Pièces jointes ({pieces.length})</h3>
+          <button onClick={onClose} className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-gray-100 text-gray-400">
+            <X size={14} />
+          </button>
+        </div>
+        <div className="space-y-2">
+          {pieces.map((p, i) => {
+            const isImage = p?.type?.includes('image');
+            return (
+              <div key={i}>
+                {isImage ? (
+                  <img src={p.data} alt={p.nom} className="w-full rounded-lg object-cover max-h-48" />
+                ) : (
+                  <a
+                    href={p?.data || "#"}
+                    download={p?.nom || "document"}
+                    className="flex items-center gap-2 text-sm bg-blue-50 text-blue-700 px-3 py-2 rounded-lg hover:bg-blue-100 transition"
+                  >
+                    <Paperclip size={13} /> {p?.nom || "Fichier sans nom"}
+                  </a>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 // ─── COMPOSANT PRINCIPAL ──────────────────────────────────────────────────────
 export default function DemandePage() {
   const [activeTab, setActiveTab] = useState("form");
@@ -177,7 +213,23 @@ export default function DemandePage() {
   const [fetchLoading, setFetchLoading] = useState(false);
   const [submitLoading, setSubmitLoading] = useState(false);
   const [submitMsg, setSubmitMsg] = useState({ text: "", type: "" });
-
+  const [selectedPieces, setSelectedPieces] = useState(null);
+  const [captchaSvg, setCaptchaSvg] = useState(""); // <-- C'était sûrement cette ligne qui manquait !
+  const [userCaptcha, setUserCaptcha] = useState("");
+  const refreshCaptcha = async () => {
+    try {
+      const res = await fetch("http://localhost:5001/api/captcha");
+      if (!res.ok) throw new Error("Erreur serveur");
+      const svg = await res.text();
+      setCaptchaSvg(svg); // On met à jour l'état avec le SVG reçu
+    } catch (err) {
+      console.error("Impossible de charger le captcha", err);
+    }
+  };
+  // --- ÉTAPE 3 : CHARGEMENT INITIAL ---
+  useEffect(() => { 
+    refreshCaptcha(); 
+  }, []);
   // Champs du formulaire
   const [prenom, setPrenom]         = useState("");
   const [nom, setNom]               = useState("");
@@ -187,7 +239,7 @@ export default function DemandePage() {
   const [fonction, setFonction]     = useState("");
   const [prestation, setPrestation] = useState("");
   const [fichiers, setFichiers]     = useState([]);
-
+  
   const resetForm = () => {
     setPrenom(""); setNom(""); setSexe(""); setTelephone("");
     setDateNaiss(""); setFonction(""); setPrestation(""); setFichiers([]);
@@ -198,7 +250,6 @@ export default function DemandePage() {
     setFetchLoading(true);
     try {
       const res = await axios.get(`${API_BASE}/demandes`);
-      console.log("Demandes:", res.data);
       setDemandes(res.data);
     } catch (err) {
       console.error(err);
@@ -212,70 +263,130 @@ export default function DemandePage() {
   }, [activeTab]);
 
   const handleSubmit = async () => {
-    if (!prenom.trim() || !nom.trim() || !prestation || fichiers.length === 0) {
-      setSubmitMsg({ text: "⚠️ Veuillez remplir tous les champs obligatoires et joindre au moins un document.", type: "error" });
-      return;
-    }
-    setSubmitLoading(true);
-    setSubmitMsg({ text: "", type: "" });
+  if (!prenom.trim() || !nom.trim() || !prestation || fichiers.length === 0) {
+    setSubmitMsg({ text: "⚠️ Remplis tout + ajoute fichiers", type: "error" });
+    return;
+  }
 
-const fd = new FormData();
-fd.append("nom_beneficiaire", `${prenom.trim()} ${nom.trim()}`);
-fd.append("type_prestation", prestation);
-fd.append("fonction", fonction || "Personnel");
+  setSubmitLoading(true);
 
-fd.append("sexe", sexe);
-fd.append("telephone", telephone);
-fd.append("date_naissance", dateNaiss);
+  const fd = new FormData();
 
-fichiers.forEach((f) => fd.append("pieces", f));
+  fd.append("nom_beneficiaire", `${prenom} ${nom}`);
+  fd.append("type_prestation", prestation);
+  fd.append("fonction", fonction || "Personnel");
+  fd.append("sexe", sexe);
+  fd.append("telephone", telephone);
+  fd.append("date_naissance", dateNaiss);
 
-    try {
-      await axios.post(`${API_BASE}/demandes/ajouter`, fd);
-      setSubmitMsg({ text: "✅ Votre dossier a été soumis avec succès ! Vous pouvez suivre son statut dans 'Mes Demandes'.", type: "success" });
-      resetForm();
-      setTimeout(() => setActiveTab("list"), 2200);
-    }catch (err) {
-  console.log("FULL ERROR:", err);
-  console.log("BACKEND RESPONSE:", err.response?.data);
-
-  setSubmitMsg({
-    text: JSON.stringify(err.response?.data) || err.message,
-    type: "error"
+  // ✅ ENVOI DES VRAIS FICHIERS
+  fichiers.forEach(file => {
+    fd.append("pieces", file); // ⚠️ IMPORTANT (même nom que backend)
   });
-}finally {
-      setSubmitLoading(false);
-    }
-  };
 
+  try {
+await axios.post(`${API_BASE}/demandes/ajouter`, fd);
+
+    setSubmitMsg({ text: "✅ Envoyé avec succès", type: "success" });
+    resetForm();
+
+  } catch (err) {
+    console.log(err.response?.data);
+    setSubmitMsg({
+      text: err.response?.data?.message || "Erreur serveur",
+      type: "error"
+    });
+  } finally {
+    setSubmitLoading(false);
+  }
+};
   const nbEnAttente = demandes.filter(d => d.statut === "En attente").length;
   const nbValidees  = demandes.filter(d => d.statut === "Validée").length;
   const nbRejetees  = demandes.filter(d => d.statut === "Rejetée").length;
 
+
   return (
     <div className="min-h-screen bg-gray-50 font-sans">
-      <div className="max-w-3xl mx-auto px-4 py-10">
 
-        {/* ── NAVIGATION ── */}
-        <div className="flex gap-3 mb-8 border-b border-gray-200 pb-0">
+      {/* ── NAVBAR FIXE ── */}
+      <header className="fixed top-0 left-0 right-0 z-40 bg-white border-b border-gray-200 shadow-sm">
+        <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between gap-4">
+
+          {/* Logo / Titre */}
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-green-700 flex items-center justify-center shadow-sm">
+              <FileText size={16} className="text-white" />
+            </div>
+            <div className="leading-tight">
+              <p className="text-[13px] font-black text-gray-800 tracking-tight">Prise en Charge</p>
+              <p className="text-[10px] text-gray-400 font-medium -mt-0.5">Faites votre demande facilement</p>
+            </div>
+          </div>
+
+          {/* Tabs centraux */}
+          <nav className="hidden sm:flex items-center gap-1">
+            {[
+              { key: "form",   label: "Formulaire" },
+              { key: "list",   label: "Mes Demandes", badge: nbEnAttente },
+              { key: "profil", label: "Profil" },
+            ].map(({ key, label, badge }) => (
+              <button
+                key={key}
+                onClick={() => setActiveTab(key)}
+                className={`flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-full transition-all ${
+                  activeTab === key
+                    ? "bg-green-700 text-white shadow-sm"
+                    : "text-gray-500 hover:bg-gray-100 hover:text-gray-800"
+                }`}
+              >
+                {label}
+                {badge > 0 && (
+                  <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full ${activeTab === key ? "bg-white/30 text-white" : "bg-red-500 text-white"}`}>
+                    {badge}
+                  </span>
+                )}
+              </button>
+            ))}
+          </nav>
+
+          {/* Profil icône */}
+          <button
+            onClick={() => setActiveTab("profil")}
+            className={`w-9 h-9 rounded-full flex items-center justify-center transition-all border-2 ${
+              activeTab === "profil"
+                ? "bg-green-700 border-green-700 text-white shadow-sm"
+                : "bg-gray-100 border-transparent text-gray-500 hover:bg-gray-200"
+            }`}
+          >
+            <User size={16} />
+          </button>
+        </div>
+      </header>
+
+      {/* Décalage pour la navbar */}
+      <div className="pt-14" />
+
+      <div className="max-w-5xl mx-auto px-4 py-8">
+
+        {/* ── NAVIGATION MOBILE (sous la navbar) ── */}
+        <div className="flex sm:hidden gap-2 mb-6 border-b border-gray-200 pb-0">
           {[
-            { key: "form", label: "Nouveau Dossier" },
-            { key: "list", label: "Mes Demandes", badge: nbEnAttente },
+            { key: "form",   label: "Formulaire" },
+            { key: "list",   label: "Mes Demandes", badge: nbEnAttente },
+            { key: "profil", label: "Profil" },
           ].map(({ key, label, badge }) => (
             <button
               key={key}
               onClick={() => setActiveTab(key)}
-              className={`flex items-center gap-2 px-5 py-2.5 text-sm font-semibold border-b-2 transition-all -mb-px ${
+              className={`flex items-center gap-1.5 px-4 py-2 text-xs font-semibold border-b-2 transition-all -mb-px ${
                 activeTab === key
                   ? "border-green-700 text-green-700"
-                  : "border-transparent text-gray-500 hover:text-gray-700"
+                  : "border-transparent text-gray-500"
               }`}
             >
               {label}
               {badge > 0 && (
-                <span className="bg-red-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full">
-                  {badge}
-                </span>
+                <span className="bg-red-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full">{badge}</span>
               )}
             </button>
           ))}
@@ -284,7 +395,6 @@ fichiers.forEach((f) => fd.append("pieces", f));
         {/* ── FORMULAIRE ── */}
         {activeTab === "form" && (
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-            {/* Titre */}
             <div className="px-8 pt-8 pb-4 border-b border-gray-100">
               <h1 className="text-xl font-bold text-gray-800">Formulaire de Demande de Prise en Charge</h1>
               <p className="text-sm text-gray-500 mt-2 leading-relaxed">
@@ -293,22 +403,13 @@ fichiers.forEach((f) => fd.append("pieces", f));
               <hr className="mt-4 border-gray-200" />
             </div>
 
-            {/* Corps du formulaire */}
             <div className="px-8 py-2">
-
               <Field label="Nom du Bénéficiaire" required>
                 <div className="flex gap-2">
-                  <input
-                    type="text" value={prenom} onChange={e => setPrenom(e.target.value)}
-                    placeholder="Prénom" className={inputCls}
-                  />
-                  <input
-                    type="text" value={nom} onChange={e => setNom(e.target.value)}
-                    placeholder="Nom" className={inputCls}
-                  />
+                  <input type="text" value={prenom} onChange={e => setPrenom(e.target.value)} placeholder="Prénom" className={inputCls} />
+                  <input type="text" value={nom} onChange={e => setNom(e.target.value)} placeholder="Nom" className={inputCls} />
                 </div>
               </Field>
-
               <Field label="Sexe">
                 <select value={sexe} onChange={e => setSexe(e.target.value)} className={selectCls}>
                   <option value="">*Merci de Sélectionner*</option>
@@ -316,21 +417,12 @@ fichiers.forEach((f) => fd.append("pieces", f));
                   <option value="Féminin">Féminin</option>
                 </select>
               </Field>
-
               <Field label="Téléphone" required>
-                <input
-                  type="tel" value={telephone} onChange={e => setTelephone(e.target.value)}
-                  placeholder="### ### ####" className={inputCls}
-                />
+                <input type="tel" value={telephone} onChange={e => setTelephone(e.target.value)} placeholder="### ### ####" className={inputCls} />
               </Field>
-
               <Field label="Date de Naissance" required>
-                <input
-                  type="date" value={dateNaiss} onChange={e => setDateNaiss(e.target.value)}
-                  className={inputCls}
-                />
+                <input type="date" value={dateNaiss} onChange={e => setDateNaiss(e.target.value)} className={inputCls} />
               </Field>
-
               <Field label="Fonction">
                 <select value={fonction} onChange={e => setFonction(e.target.value)} className={selectCls}>
                   <option value="">*Merci de Sélectionner*</option>
@@ -340,7 +432,6 @@ fichiers.forEach((f) => fd.append("pieces", f));
                   <option value="Personnel">Personnel administratif</option>
                 </select>
               </Field>
-
               <Field label="Type de Prestation" required>
                 <select value={prestation} onChange={e => setPrestation(e.target.value)} className={selectCls}>
                   <option value="">*Merci de Sélectionner*</option>
@@ -352,21 +443,37 @@ fichiers.forEach((f) => fd.append("pieces", f));
                   <option value="Circoncision">Circoncision</option>
                 </select>
               </Field>
-
               <Field label="Documents Justificatifs" required>
-                <FileUploadZone
-                  files={fichiers}
-                  onChange={setFichiers}
-                  accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
-                />
+                <FileUploadZone files={fichiers} onChange={setFichiers} accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" />
                 <p className="text-[11px] text-gray-400 mt-2">
                   Joignez tous les documents nécessaires : ordonnance, résultats d'analyses, devis, etc.
                 </p>
               </Field>
-
             </div>
+            <div className="mt-6 p-4 border-t border-gray-100 bg-gray-50/50 rounded-b-xl">
+  <label className="block text-[10px] font-black text-gray-400 uppercase mb-3">
+    Vérification de sécurité
+  </label>
+  
+  <div className="flex flex-col md:flex-row items-center gap-4">
+    {/* Affichage du SVG */}
+    <div 
+      className="bg-white p-2 rounded border shadow-sm cursor-pointer"
+      dangerouslySetInnerHTML={{ __html: captchaSvg }}
+      onClick={refreshCaptcha} // Cliquer sur l'image pour changer si illisible
+      title="Cliquer pour changer"
+    />
 
-            {/* Footer */}
+    {/* Champ de saisie */}
+    <input 
+      type="text"
+      placeholder="Entrez le code"
+      className="p-3 border border-gray-200 rounded-lg flex-1 font-bold outline-none focus:ring-2 ring-blue-500"
+      value={userCaptcha}
+      onChange={(e) => setUserCaptcha(e.target.value)}
+    />
+  </div>
+</div>
             <div className="px-8 py-6 bg-gray-50 border-t border-gray-100">
               {submitMsg.text && (
                 <div className={`mb-4 p-3 rounded-lg text-sm font-medium border ${
@@ -378,16 +485,10 @@ fichiers.forEach((f) => fd.append("pieces", f));
                 </div>
               )}
               <div className="flex gap-3 justify-end">
-                <button
-                  type="button" onClick={resetForm}
-                  className="px-6 py-2.5 text-sm font-semibold text-gray-600 border border-gray-300 rounded hover:bg-gray-100 transition"
-                >
+                <button type="button" onClick={resetForm} className="px-6 py-2.5 text-sm font-semibold text-gray-600 border border-gray-300 rounded hover:bg-gray-100 transition">
                   Réinitialiser
                 </button>
-                <button
-                  type="button" onClick={handleSubmit} disabled={submitLoading}
-                  className="flex items-center gap-2 px-7 py-2.5 text-sm font-bold bg-green-700 text-white rounded hover:bg-green-800 transition disabled:opacity-60 disabled:cursor-not-allowed shadow-sm"
-                >
+                <button type="button" onClick={handleSubmit} disabled={submitLoading} className="flex items-center gap-2 px-7 py-2.5 text-sm font-bold bg-green-700 text-white rounded hover:bg-green-800 transition disabled:opacity-60 disabled:cursor-not-allowed shadow-sm">
                   {submitLoading
                     ? <><span className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full" /> Envoi...</>
                     : <><Send size={15} /> Soumettre le Dossier</>
@@ -398,16 +499,16 @@ fichiers.forEach((f) => fd.append("pieces", f));
           </div>
         )}
 
-        {/* ── LISTE DES DEMANDES ── */}
+        {/* ── LISTE DES DEMANDES (TABLEAU) ── */}
         {activeTab === "list" && (
           <div>
             {/* Stats */}
             {demandes.length > 0 && (
               <div className="grid grid-cols-3 gap-3 mb-6">
                 {[
-                  { label: "En attente", val: nbEnAttente, cls: "text-amber-600 border-amber-200"   },
+                  { label: "En attente", val: nbEnAttente, cls: "text-amber-600 border-amber-200"    },
                   { label: "Validées",   val: nbValidees,  cls: "text-emerald-600 border-emerald-200" },
-                  { label: "Refusées",   val: nbRejetees,  cls: "text-red-600 border-red-200"        },
+                  { label: "Refusées",   val: nbRejetees,  cls: "text-red-600 border-red-200"         },
                 ].map(({ label, val, cls }) => (
                   <div key={label} className={`bg-white rounded-lg p-4 text-center shadow-sm border ${cls}`}>
                     <p className={`text-2xl font-black ${cls.split(" ")[0]}`}>{val}</p>
@@ -436,83 +537,160 @@ fichiers.forEach((f) => fd.append("pieces", f));
                 </button>
               </div>
             ) : (
-              <div className="space-y-3">
-                {demandes.map((d) => {
-                  // Récupération des pièces jointes (tableau JSON du modèle)
-                  const pieces = Array.isArray(d.pieces) ? d.pieces : (d.pieces ? Object.values(d.pieces) : []);
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-gray-50 border-b border-gray-200">
+                        <th className="text-left px-4 py-3 text-xs font-black text-gray-500 uppercase tracking-wider">#</th>
+                        <th className="text-left px-4 py-3 text-xs font-black text-gray-500 uppercase tracking-wider">Bénéficiaire / Type</th>
+                        <th className="text-left px-4 py-3 text-xs font-black text-gray-500 uppercase tracking-wider">Décision</th>
+                        <th className="text-center px-4 py-3 text-xs font-black text-gray-500 uppercase tracking-wider">Consulte Pièces</th>
+                        <th className="text-center px-4 py-3 text-xs font-black text-gray-500 uppercase tracking-wider">État</th>
+                        <th className="text-left px-4 py-3 text-xs font-black text-gray-500 uppercase tracking-wider">Motif</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {demandes.map((d) => {
+                        const pieces = d.piecesJointes || [];
+                        const motif  = d.motif_refus || d.motifRefus || "—";
+                        const messageAdmin = d.message_admin;
+                        const isValidee = d.statut === "Validée";
+                        const isRejetee = d.statut === "Rejetée";
 
-                  return (
-                    <div
-                      key={d.id}
-                      className={`bg-white rounded-lg shadow-sm border overflow-hidden transition hover:shadow-md ${
-                        d.statut === "Validée" ? "border-emerald-200" :
-                        d.statut === "Rejetée" ? "border-red-200" : "border-gray-200"
-                      }`}
-                    >
-                      {/* Barre de couleur */}
-                      <div className={`h-1 w-full ${
-                        d.statut === "Validée" ? "bg-emerald-400" :
-                        d.statut === "Rejetée" ? "bg-red-400" : "bg-amber-400"
-                      }`} />
+                        return (
+                          <tr
+                            key={d.id}
+                            className={`hover:bg-gray-50 transition ${
+                              isValidee ? "border-l-4 border-l-emerald-400" :
+                              isRejetee ? "border-l-4 border-l-red-400"     :
+                                          "border-l-4 border-l-amber-400"
+                            }`}
+                          >
+                            {/* # */}
+                            <td className="px-4 py-3 text-[11px] text-gray-400 font-bold">#{d.id}</td>
 
-                      <div className="p-5">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-[10px] font-bold text-gray-400 tracking-widest">#{d.id}</span>
-                              <h3 className="font-bold text-gray-800">{d.type_prestation}</h3>
-                            </div>
-                            <p className="text-gray-500 text-sm mt-1">
-                              Bénéficiaire : <span className="text-gray-700 font-semibold">{d.nom_beneficiaire}</span>
-                            </p>
-                            {d.fonction && (
-                              <p className="text-gray-400 text-xs mt-0.5">Fonction : {d.fonction}</p>
-                            )}
-                            <p className="text-gray-400 text-xs mt-1">
-                              Déposé le {new Date(d.createdAt).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}
-                            </p>
+                            {/* Bénéficiaire + type */}
+                            <td className="px-4 py-3">
+                              <p className="font-semibold text-gray-800">{d.nom_beneficiaire}</p>
+                              <p className="text-xs text-gray-400 mt-0.5">{d.type_prestation}</p>
+                              <p className="text-[10px] text-gray-300 mt-0.5">
+                                {new Date(d.createdAt).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}
+                              </p>
+                            </td>
 
-                            {/* Pièces jointes */}
-                            {pieces.length > 0 && (
-                              <div className="flex flex-wrap gap-2 mt-2">
-                                {pieces.map((p, i) => {
-  // On vérifie si p est un objet et s'il a une propriété 'type'
-  const isImage = p?.type?.includes('image'); 
-  
-  return (
-    <div key={i}>
-      {isImage ? (
-        <img src={p.data} alt={p.nom} className="w-20 h-20 object-cover rounded" />
-      ) : (
-        <a 
-          href={p?.data || "#"} 
-          download={p?.nom || "document"}
-          className="flex items-center gap-1 text-[11px] bg-blue-50 text-blue-700 px-2 py-1 rounded"
-        >
-          <Paperclip size={10} /> {p?.nom || "Fichier sans nom"}
-        </a>
-      )}
-    </div>
-  );
-})}
-                              </div>
-                            )}
-                          </div>
-                          <StatusBadge status={d.statut} />
-                        </div>
+                            {/* Décision */}
+                            <td className="px-4 py-3 max-w-[180px]">
+                              {(isValidee || isRejetee) ? (
+                                <div className={`text-xs rounded-lg px-3 py-2 ${isValidee ? "bg-emerald-50 text-emerald-800" : "bg-red-50 text-red-800"}`}>
+                                  <p className="font-bold mb-0.5">{isValidee ? "✅ Acceptée" : "❌ Refusée"}</p>
+                                  <p className="text-[11px] leading-snug">
+                                    {messageAdmin || (isValidee
+                                      ? "Rapprochez-vous de la structure de gestion."
+                                      : "Contactez la structure pour plus d'infos."
+                                    )}
+                                  </p>
+                                </div>
+                              ) : (
+                                <span className="text-xs text-gray-400 italic">En cours d'examen…</span>
+                              )}
+                            </td>
 
-                        {/* Décision de l'admin */}
-                        <DecisionCard demande={d} />
-                      </div>
-                    </div>
-                  );
-                })}
+                            {/* Consulte Pièces */}
+                            <td className="px-4 py-3 text-center">
+                              {pieces.length > 0 ? (
+                                <button
+                                  onClick={() => setSelectedPieces(pieces)}
+                                  className="inline-flex items-center gap-1.5 text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200 px-3 py-1.5 rounded-full hover:bg-blue-100 transition"
+                                >
+                                  <Eye size={12} /> {pieces.length} fichier{pieces.length > 1 ? "s" : ""}
+                                </button>
+                              ) : (
+                                <span className="text-xs text-gray-300">—</span>
+                              )}
+                            </td>
+
+                            {/* État */}
+                            <td className="px-4 py-3 text-center">
+                              <StatusBadge status={d.statut} />
+                            </td>
+
+                            {/* Motif */}
+                            <td className="px-4 py-3 max-w-[160px]">
+                              {isRejetee && (d.motif_refus || d.motifRefus) ? (
+                                <span className="text-xs text-red-700 font-medium leading-snug">
+                                  {d.motif_refus || d.motifRefus}
+                                </span>
+                              ) : (
+                                <span className="text-xs text-gray-300">—</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
           </div>
         )}
 
+        {/* ── PROFIL ── */}
+        {activeTab === "profil" && (
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+            {/* Header profil */}
+            <div className="bg-gradient-to-r from-green-700 to-green-600 px-8 py-8 flex items-center gap-5">
+              <div className="w-16 h-16 rounded-full bg-white/20 flex items-center justify-center shadow-inner">
+                <User size={32} className="text-white" />
+              </div>
+              <div>
+                <h2 className="text-white font-black text-lg">Mon Profil</h2>
+                <p className="text-green-100 text-sm mt-0.5">Informations personnelles</p>
+              </div>
+            </div>
+
+            {/* Stats rapides */}
+            <div className="grid grid-cols-3 divide-x divide-gray-100 border-b border-gray-100">
+              {[
+                { label: "Dossiers soumis",  val: demandes.length,  color: "text-gray-700"    },
+                { label: "Validés",           val: nbValidees,       color: "text-emerald-600" },
+                { label: "En attente",        val: nbEnAttente,      color: "text-amber-600"   },
+              ].map(({ label, val, color }) => (
+                <div key={label} className="py-5 text-center">
+                  <p className={`text-2xl font-black ${color}`}>{val}</p>
+                  <p className="text-[11px] text-gray-400 font-medium mt-0.5">{label}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Infos */}
+            <div className="px-8 py-6 space-y-4">
+              <p className="text-xs font-black uppercase text-gray-400 tracking-widest mb-3">Informations du compte</p>
+              {[
+                { label: "Nom complet",   value: "—" },
+                { label: "Fonction",      value: "—" },
+                { label: "Téléphone",     value: "—" },
+                { label: "Date de naissance", value: "—" },
+              ].map(({ label, value }) => (
+                <div key={label} className="flex items-center justify-between py-3 border-b border-gray-100 last:border-0">
+                  <span className="text-sm text-gray-500">{label}</span>
+                  <span className="text-sm font-semibold text-gray-700">{value}</span>
+                </div>
+              ))}
+              <p className="text-[11px] text-gray-400 mt-4 text-center italic">
+                Les informations de profil sont extraites depuis les données de votre dernier dossier soumis.
+              </p>
+            </div>
+          </div>
+        )}
+
       </div>
+
+      {/* ── MODAL PIÈCES ── */}
+      {selectedPieces && (
+        <PiecesModal pieces={selectedPieces} onClose={() => setSelectedPieces(null)} />
+      )}
     </div>
   );
 }

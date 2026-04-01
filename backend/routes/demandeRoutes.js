@@ -4,31 +4,35 @@ const { sequelize } = require('../config/db');
 
 // Models
 const Demande = require('../models/Demande');
-const Dossier = require('../models/Dossier');
-const PieceDossier = require('../models/PieceDossier');
 
-// Cloudinary (upload middleware)
+
+// Upload Cloudinary
 const { upload } = require('../config/cloudinary');
 
 
 // ─────────────────────────────
-// 1. AJOUTER UNE DEMANDE
+// 1. AJOUT DEMANDE
 // ─────────────────────────────
 router.post('/ajouter', (req, res) => {
   upload.array('pieces', 10)(req, res, async (err) => {
-
     if (err) {
-      console.error("🔥 Upload error:", err);
       return res.status(500).json({
-        message: "Erreur upload fichiers",
-        error: err.message || err
+        message: "Erreur upload",
+        error: err.message
       });
     }
 
     try {
-      console.log("FILES:", req.files);
-      console.log("BODY:", req.body);
+      const {
+        nom_beneficiaire,
+        type_prestation,
+        fonction,
+        sexe,
+        telephone,
+        date_naissance
+      } = req.body;
 
+      // Pièces (Cloudinary)
       let piecesData = [];
 
       if (req.files && req.files.length > 0) {
@@ -38,18 +42,25 @@ router.post('/ajouter', (req, res) => {
           data: file.path
         }));
       }
-
+console.log("BODY:", req.body);
+console.log("FILES:", req.files);
+      // ❌ IMPORTANT : on garde MAIS ça peut être supprimé plus tard
       const nouvelleDemande = await Demande.create({
-        ...req.body,
-        pieces: piecesData
+        nom_beneficiaire,
+        type_prestation,
+        fonction,
+        sexe,
+        telephone,
+        date_naissance,
+        pieces: piecesData, // ⚠️ optionnel (à éviter si gros volume)
+        statut: "En attente"
       });
 
       res.status(201).json(nouvelleDemande);
 
     } catch (err) {
-      console.error("🔥 Erreur Ajout Demande:", err);
       res.status(500).json({
-        message: "Erreur serveur",
+        message: "Erreur enregistrement",
         error: err.message
       });
     }
@@ -58,7 +69,7 @@ router.post('/ajouter', (req, res) => {
 
 
 // ─────────────────────────────
-// 2. VALIDER UNE DEMANDE (CORRIGÉ)
+// 2. VALIDER DEMANDE
 // ─────────────────────────────
 router.post('/valider/:id', async (req, res) => {
   const t = await sequelize.transaction();
@@ -71,8 +82,9 @@ router.post('/valider/:id', async (req, res) => {
       return res.status(404).json({ message: "Demande introuvable" });
     }
 
-    // Numéro unique
-    const count = await Dossier.count();
+    // Numéro dossier
+    const count = await Dossier.count({ transaction: t });
+
     const num_sequence = `${new Date().getFullYear()}-${(count + 1)
       .toString()
       .padStart(3, '0')}`;
@@ -85,7 +97,7 @@ router.post('/valider/:id', async (req, res) => {
       fonction: demande.fonction
     }, { transaction: t });
 
-    // Transfert des pièces
+    // Transfert pièces
     const pieces = Array.isArray(demande.pieces) ? demande.pieces : [];
 
     const formattedPieces = pieces.map(p => ({
@@ -99,20 +111,19 @@ router.post('/valider/:id', async (req, res) => {
       await PieceDossier.bulkCreate(formattedPieces, { transaction: t });
     }
 
-    // ✅ CORRECTION ICI (IMPORTANT)
-demande.statut = "Validée";
-await demande.save({ transaction: t });
+    // Mise à jour statut
+    demande.statut = "Validée";
+    await demande.save({ transaction: t });
 
     await t.commit();
 
     res.json({
-      message: "Demande validée avec succès",
+      message: "Demande validée",
       dossier
     });
 
   } catch (err) {
     await t.rollback();
-    console.error("🔥 Erreur validation:", err);
 
     res.status(500).json({
       message: "Erreur serveur",
@@ -123,7 +134,11 @@ await demande.save({ transaction: t });
 
 
 // ─────────────────────────────
-// 3. RÉCUPÉRER DEMANDES
+// 3. LISTE DEMANDES (SANS pièces) ✅
+/*
+💥 IMPORTANT : on ne récupère PAS `pieces`
+→ évite l’erreur mémoire MySQL
+*/
 // ─────────────────────────────
 router.get('/', async (req, res) => {
   try {
@@ -135,6 +150,8 @@ router.get('/', async (req, res) => {
         'telephone',
         'type_prestation',
         'statut',
+        'motif_refus',
+        'message_admin',
         'createdAt'
       ],
       order: [['createdAt', 'DESC']],
@@ -144,7 +161,6 @@ router.get('/', async (req, res) => {
     res.json(demandes);
 
   } catch (err) {
-    console.error(err);
     res.status(500).json({
       message: "Erreur récupération",
       error: err.message
@@ -154,27 +170,19 @@ router.get('/', async (req, res) => {
 
 
 // ─────────────────────────────
-// 4. REJETER UNE DEMANDE
+// 4. RÉCUPÉRER UNE DEMANDE (AVEC pièces)
 // ─────────────────────────────
-router.post('/rejeter/:id', async (req, res) => {
+router.get('/:id', async (req, res) => {
   try {
-    const { motif } = req.body;
-
     const demande = await Demande.findByPk(req.params.id);
 
     if (!demande) {
-      return res.status(404).json({ message: "Demande introuvable" });
+      return res.status(404).json({ message: "Introuvable" });
     }
 
-    demande.statut = "Rejetée";
-    demande.motif_refus = motif || "Dossier non conforme";
-
-    await demande.save();
-
-    res.json({ message: "Demande rejetée avec succès" });
+    res.json(demande);
 
   } catch (err) {
-    console.error(err);
     res.status(500).json({
       message: "Erreur serveur",
       error: err.message
@@ -183,6 +191,73 @@ router.post('/rejeter/:id', async (req, res) => {
 });
 
 
+// ─────────────────────────────
+// 5. REJETER DEMANDE
+// ─────────────────────────────
+router.post('/rejeter/:id', async (req, res) => {
+  try {
+    const { motif } = req.body;
+
+    const demande = await Demande.findByPk(req.params.id);
+
+    if (!demande) {
+      return res.status(404).json({ message: "Introuvable" });
+    }
+
+    demande.statut = "Rejetée";
+    demande.motif_refus = motif || "Dossier non conforme";
+
+    await demande.save();
+
+    res.json({ message: "Demande rejetée" });
+
+  } catch (err) {
+    res.status(500).json({
+      message: "Erreur serveur",
+      error: err.message
+    });
+  }
+});
+
+router.post('/submit-dossier', async (req, res) => {
+  try {
+    const { captchaInput, pNom, pPrenom, fonction, type_prestation, montantTotal } = req.body;
+
+    // --- ÉTAPE 1 : LA BARRIÈRE CAPTCHA ---
+    // On vérifie si le captcha existe et s'il correspond (en minuscule)
+    if (!req.session.captcha || captchaInput.toLowerCase() !== req.session.captcha) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "Le code de sécurité est incorrect ou a expiré." 
+      });
+    }
+
+    // --- ÉTAPE 2 : LOGIQUE MÉTIER (APRÈS VALIDATION) ---
+    
+    // Une fois validé, on supprime le captcha pour éviter qu'il soit réutilisé
+    req.session.captcha = null;
+
+    // Création de la demande dans MySQL via Sequelize
+    const nouvelleDemande = await PriseEnCharge.create({
+      pNom,
+      pPrenom,
+      fonction,
+      type_prestation,
+      montantTotal,
+      statut: 'En attente'
+    });
+
+    res.status(201).json({
+      success: true,
+      message: "Demande enregistrée avec succès !",
+      data: nouvelleDemande
+    });
+
+  } catch (error) {
+    console.error("Erreur soumission:", error);
+    res.status(500).json({ success: false, message: "Erreur interne du serveur." });
+  }
+});
 // ─────────────────────────────
 // EXPORT
 // ─────────────────────────────

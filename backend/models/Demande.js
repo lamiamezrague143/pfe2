@@ -9,9 +9,10 @@ const Demande = sequelize.define('Demande', {
   type_prestation: { type: DataTypes.STRING, allowNull: false },
   fonction: { type: DataTypes.STRING, defaultValue: "Personnel" },
   // Ton modèle est déjà bon, assure-toi juste que 'pieces' est bien en JSON
-pieces: { 
-  type: DataTypes.JSON, 
-  allowNull: false, 
+pieces: {
+  type: DataTypes.JSON, // Utilise JSON pour stocker le tableau d'objets [ {nom, type, data}, ... ]
+  allowNull: true,
+
   defaultValue: [] 
 },
   statut: { 

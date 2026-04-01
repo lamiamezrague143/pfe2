@@ -24,9 +24,19 @@ const demandeRoutes = require('./routes/demandeRoutes');
 const etatRoutes = require('./routes/etatRoutes');      
 // 1. Importation de la route
 const pieceRoutes = require('./routes/pieceRoutes');
+const captchaRoutes = require('./routes/captchaRoutes'); // Adapte le chemin
 
+// ... après tes middlewares (cors, json, etc.)
+const session = require('express-session');
 const app = express();
 
+
+app.use(session({
+  secret: 'votre_secret_ummto', // Change ceci par une phrase aléatoire
+  resave: false,
+  saveUninitialized: true,
+  cookie: { secure: false } // 'false' car tu es en HTTP (localhost) et non HTTPS
+}));
 // ... reste du code identique
 // --- MIDDLEWARES ---
 app.use(cors({
@@ -58,7 +68,7 @@ app.use('/api/prestations', prestationRoutes);
 app.use('/api/demandes', demandeRoutes); // Ajouté ici
 app.use('/api/etats', etatRoutes);
 app.use('/api/dossiers', dossierRoutes);
-
+app.use('/api', captchaRoutes);
 app.get("/api/test", (req, res) => {
   res.json({ message: "Backend fonctionne !" });
 });
