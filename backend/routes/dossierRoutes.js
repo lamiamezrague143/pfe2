@@ -40,10 +40,14 @@ if (Array.isArray(pieces_deposees) && pieces_deposees.length > 0) {
     });
 
     res.status(201).json(dossierComplet);
-  } catch (error) {
-    if (t) await t.rollback();
-    console.error("Erreur Backend:", error);
-    res.status(500).json({ message: error.message });
+  } catch (err) {
+  console.error("❌ FULL ERROR:", err);
+
+  return res.status(500).json({
+    message: err.message,
+    stack: err.stack,
+    errors: err.errors
+  });
   }
 });
 

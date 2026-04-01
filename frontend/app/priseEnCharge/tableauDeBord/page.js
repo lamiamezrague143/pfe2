@@ -158,35 +158,48 @@ const statsGrades = history.reduce((acc, curr) => {
 const statsPrestations = history.reduce((acc, curr) => {
   const status = (curr.status || "").toLowerCase().trim();
 
-if (
-  status.includes("annul") ||
-  status.includes("cancel") ||
-  status.includes("refus")
-)
+  // ❌ ignorer les annulés
+  if (
+    status.includes("annul") ||
+    status.includes("cancel") ||
+    status.includes("refus")
+  ) {
     return acc;
+  }
 
-  const p = curr.titre || curr.prestation;
+  // ✅ déclaration correcte de p
+  const p = (curr.type_prestation || curr.prestation || "").toUpperCase().trim();
+
   if (!p) return acc;
 
   acc[p] = (acc[p] || 0) + 1;
+
   return acc;
 }, {});
 
-  const avenantsByClient = dossiers.reduce((acc, d) => {
-    const key = (d.nom_beneficiaire || "").toUpperCase().trim();
-    if (!acc[key]) acc[key] = { parts: d.nom_beneficiaire || "", avenants: [] };
-    acc[key].avenants.push({
-      montant:     parseFloat(d.montant_avenant || 0),
-      prestation: d.type_prestation || "",
-      category: (() => {
-        const p = (d.type_prestation || "").toUpperCase();
-        if (p.includes("DENT")) return "dentaire";
-        if (p.includes("OPHTA") || p.includes("OEIL")) return "ophtalmique";
-        return "general";
-      })(),
-    });
-    return acc;
-  }, {});
+ const avenantsByClient = dossiers.reduce((acc, d) => {
+  const key = (d.nom_beneficiaire || "").toUpperCase().trim();
+  if (!acc[key]) acc[key] = { parts: d.nom_beneficiaire || "", avenants: [] };
+  
+  acc[key].avenants.push({
+    montant: parseFloat(d.montant_avenant || 0),
+    prestation: d.type_prestation || "",
+    
+    // Correction ici : on utilise 'd' au lieu de 'av'
+    category: (() => {
+      const p = (d.type_prestation || "").toUpperCase(); // Changé 'av' en 'd'
+      if (p.includes("DENT")) return "dentaire";
+      if (
+        p.includes("OPHTA") ||
+        p.includes("OEIL") ||
+        p.includes("LUNET") ||
+        p.includes("OPHTALMO")
+      ) return "ophtalmique";
+      return "general";
+    })(),
+  });
+  return acc;
+}, {}); 
 
 const clientsRegroupes = history.reduce((acc, curr) => {
   // On récupère le nom du patient (pNom + pPrenom)
@@ -194,13 +207,22 @@ const clientsRegroupes = history.reduce((acc, curr) => {
   
   // On utilise montantTotal car c'est ce qui est défini dans ton modèle
   const montant = parseFloat(curr.montantTotal || 0);
-  const titrePrest = curr.prestation || "Sans titre";
+  const titrePrest = curr.type_prestation || curr.prestation || "Sans titre";
   const prestUpper = titrePrest.toUpperCase();
 
   // 1. Déterminer la catégorie
   let category = "general";
-  if (prestUpper.includes("DENT")) category = "dentaire";
-  else if (prestUpper.includes("OPHTA") || prestUpper.includes("OEIL")) category = "ophtalmique";
+if (prestUpper.includes("DENT")) {
+  category = "dentaire";
+} 
+else if (
+  prestUpper.includes("OPHTA") ||
+  prestUpper.includes("OEIL") ||
+  prestUpper.includes("LUNET") ||
+  prestUpper.includes("OPHTALMO")
+) {
+  category = "ophtalmique";
+}
 
   const target = acc[category];
   if (!target[clientKey]) {

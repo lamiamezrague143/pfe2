@@ -7,7 +7,7 @@ import {
   ChevronRight, ClipboardList, Filter, Edit3, X, Shield, Activity, 
   Landmark, FileText, User, Calendar, GripVertical, Pencil
 } from 'lucide-react';
-
+import { Star } from 'lucide-react';
 const API_BASE = "http://localhost:5001/api";
 
 const getIcon = (titre) => {
@@ -89,7 +89,7 @@ export default function GestionDossiersDashboard() {
   const [utilisateurs, setUtilisateurs] = useState([]);
   const [blocs, setBlocs] = useState([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
-
+  const [recherchePrestation, setRecherchePrestation] = useState('');
   const [prestationTitre, setPrestationTitre] = useState('');
   const [nomRecherche, setNomRecherche] = useState('');
   const [suggestions, setSuggestions] = useState([]);
@@ -98,7 +98,7 @@ export default function GestionDossiersDashboard() {
   const [listePieces, setListePieces] = useState([]); 
   const [montantAvenant, setMontantAvenant] = useState('');
   const [accusereception, setAccuseReception] = useState(null);
-
+  const [favoris, setFavoris] = useState([]);
   const [dateDebut, setDateDebut] = useState('');
   const [dateFin, setDateFin] = useState('');
   const [rechercheRegistre, setRechercheRegistre] = useState('');
@@ -137,7 +137,24 @@ export default function GestionDossiersDashboard() {
   }, []);
 
   useEffect(() => { chargerDonnees(); }, [chargerDonnees]);
-  
+  useEffect(() => {
+  const saved = localStorage.getItem("favorisPrestations");
+  if (saved) setFavoris(JSON.parse(saved));
+}, []);
+
+
+
+
+const toggleFavori = (id) => {
+  setFavoris(prev =>
+    prev.includes(id)
+      ? prev.filter(f => f !== id)
+      : [...prev, id]
+  );
+};
+useEffect(() => {
+  localStorage.setItem("favorisPrestations", JSON.stringify(favoris));
+}, [favoris]);
   // ── Helpers pièces (modale ajout) ──
   const ajouterPieceNouveauForm = () => {
     const val = newPieceInput.trim();
@@ -236,18 +253,26 @@ const ajouterPrestation = async () => {
     setFonctionChoisie('');
     setAccuseReception(null);
   };
+const type = prestationTitre?.toLowerCase() || "";
 
+const isMontantRequired =
+  type.includes("avenant") ||
+  type.includes("ophtalmologie") ||
+  type.includes("lunetterie") ||
+  type.includes("dentaire");
   const handleSubmit = async () => {
     if (!beneficiaireSelectionne || !fonctionChoisie || !toutesLesPiecesCochees) return;
     setIsSubmitting(true);
-    const isAvenant = prestationTitre.toLowerCase().includes("avenant");
+    
     const piecesSelectionnees = listePieces.filter(p => p.cochee).map(p => p.nom);
     const payload = {
       nom_beneficiaire: `${beneficiaireSelectionne.nomComplet} ${beneficiaireSelectionne.prenomComplet}`,
       type_prestation: prestationTitre,
       fonction: fonctionChoisie,
       pieces_deposees: piecesSelectionnees,
-      montant_avenant: isAvenant ? parseFloat(montantAvenant) || 0 : 0
+      montant_avenant: isMontantRequired
+    ? parseFloat(montantAvenant) || 0
+    : 0
     };
     try {
       const res = await axios.post(`${API_BASE}/dossiers/ajouter`, payload);
@@ -259,7 +284,9 @@ const ajouterPrestation = async () => {
         lieuN: beneficiaireSelectionne.lieuNaissance,
         categorie: fonctionChoisie,
         piecesAffichees: piecesSelectionnees,
-        montantAffichage: isAvenant ? (parseFloat(montantAvenant) || 0) : null,
+        montantAffichage: isMontantRequired
+  ? (parseFloat(montantAvenant) || 0)
+  : null,
         dateSysteme: new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })
       });
       chargerDonnees();
@@ -267,6 +294,7 @@ const ajouterPrestation = async () => {
     finally { setIsSubmitting(false); }
   };
 
+  
   return (
     <div className="flex flex-col min-h-screen bg-[#F4F7FE] font-sans text-slate-900">
 
@@ -283,8 +311,16 @@ const ajouterPrestation = async () => {
             <button onClick={() => setVueActive("liste")} className={`flex items-center gap-2 px-5 py-2 rounded-xl transition-all text-sm font-black ${vueActive === "liste" ? "bg-white text-green-900 shadow" : "text-green-100/70 hover:bg-white/10"}`}>
               <ClipboardList size={16}/> Registre Général
             </button>
+            <button
+  onClick={chargerDonnees}
+  className="flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-black bg-white text-green-900 shadow hover:bg-green-50"
+>
+  <Activity size={16} />
+  Rafraîchir
+</button>
           </nav>
           <div className="w-36"/>
+          
         </div>
       </header>
 
@@ -293,8 +329,30 @@ const ajouterPrestation = async () => {
           <aside className="w-64 bg-white border-r border-gray-100 shadow-sm flex-shrink-0 sticky top-16 h-[calc(100vh-4rem)] flex flex-col print:hidden">
             <div className="flex-1 overflow-y-auto p-5">
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 px-2">Prestations</p>
+              <div className="px-2 mb-4">
+  <div className="relative">
+    <Search size={14} className="absolute left-3 top-3 text-gray-400" />
+    <input
+      value={recherchePrestation}
+      onChange={(e) => setRecherchePrestation(e.target.value)}
+      placeholder="Rechercher une prestation..."
+      className="w-full bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold p-2 pl-8 outline-none focus:border-green-400"
+    />
+   
+
+  </div>
+</div>
               <div className="flex flex-col gap-2">
-                {blocs.map(b => (
+                {blocs
+  .filter(b =>
+    (b.titre || "").toLowerCase().includes(recherchePrestation.toLowerCase())
+  )
+  .sort((a, b) => {
+    const aFav = favoris.includes(a.id);
+    const bFav = favoris.includes(b.id);
+    return bFav - aFav; // favoris en premier
+  })
+  .map(b => (
                   <div key={b.id} className="relative group">
                     <button
                       onClick={() => ouvrirFormulaire(b)}
@@ -313,6 +371,22 @@ const ajouterPrestation = async () => {
                       </div>
                       <ChevronRight size={14} className="flex-shrink-0 opacity-50"/>
                     </button>
+                   <button
+  onClick={(e) => {
+    e.stopPropagation();
+    toggleFavori(b.id);
+  }}
+  className="absolute right-2 top-2"
+>
+  <Star
+    size={18}
+    className={`transition-all ${
+      favoris.includes(b.id)
+        ? "fill-yellow-400 text-yellow-400 scale-110"
+        : "text-gray-300 hover:text-yellow-400 hover:scale-110"
+    }`}
+  />
+</button>
                     <button
                       onClick={(e) => ouvrirEditPrestation(e, b)}
                       title="Modifier cette prestation"
@@ -331,6 +405,7 @@ const ajouterPrestation = async () => {
             </div>
           </aside>
         )}
+        
 
         <main className="flex-1 p-8 lg:p-12 overflow-y-auto print:p-0 print:bg-white">
 
@@ -372,7 +447,7 @@ const ajouterPrestation = async () => {
                         </div>
                       </div>
                     )}
-                    {prestationTitre.toLowerCase().includes("avenant") && (
+                    {isMontantRequired && (
                       <div className="bg-amber-50 p-6 rounded-[25px] border-2 border-amber-100 animate-in slide-in-from-top-2">
                         <div className="flex items-center gap-3 mb-4 text-amber-700">
                           <Landmark size={20} />

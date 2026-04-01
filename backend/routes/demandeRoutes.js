@@ -2,60 +2,82 @@ const express = require('express');
 const router = express.Router();
 const { sequelize } = require('../config/db');
 
-// Import des modèles
+// Models
 const Demande = require('../models/Demande');
 const Dossier = require('../models/Dossier');
 const PieceDossier = require('../models/PieceDossier');
 
-// Import du middleware Multer
-const upload = require('../middleware/upload'); 
+// Cloudinary (upload middleware)
+const { upload } = require('../config/cloudinary');
 
-// ─── 1. AJOUTER UNE DEMANDE (CORRIGÉ POUR LE FRONTEND) ───────────────────────
-// Utilisation de upload.array('pieces') pour correspondre à fd.append("pieces", f)
-router.post('/ajouter', upload.array('pieces', 10), async (req, res) => {
-  try {
-    const { nom_beneficiaire, type_prestation, fonction } = req.body;
 
-    // Validation de base
-    if (!nom_beneficiaire || !type_prestation) {
-      return res.status(400).json({ message: "Champs obligatoires manquants" });
+// ─────────────────────────────
+// 1. AJOUTER UNE DEMANDE
+// ─────────────────────────────
+router.post('/ajouter', (req, res) => {
+  upload.array('pieces', 10)(req, res, async (err) => {
+
+    if (err) {
+      console.error("🔥 Upload error:", err);
+      return res.status(500).json({
+        message: "Erreur upload fichiers",
+        error: err.message || err
+      });
     }
 
-    // Extraction des noms de fichiers (tableau de strings)
-    // req.files est un tableau d'objets généré par upload.array
-    const nomsFichiers = req.files ? req.files.map(f => f.filename) : [];
+    try {
+      console.log("FILES:", req.files);
+      console.log("BODY:", req.body);
 
-    const demande = await Demande.create({
-      nom_beneficiaire,
-      type_prestation,
-      fonction: fonction || "Personnel",
-      // Stockage direct du tableau de noms de fichiers dans la colonne JSON
-      pieces: nomsFichiers, 
-      statut: "En attente"
-    });
+      let piecesData = [];
 
-    res.status(201).json(demande);
-  } catch (err) {
-    console.error("Erreur Backend Ajout avec fichiers:", err);
-    res.status(500).json({ error: err.message });
-  }
+      if (req.files && req.files.length > 0) {
+        piecesData = req.files.map(file => ({
+          nom: file.originalname,
+          type: file.mimetype,
+          data: file.path
+        }));
+      }
+
+      const nouvelleDemande = await Demande.create({
+        ...req.body,
+        pieces: piecesData
+      });
+
+      res.status(201).json(nouvelleDemande);
+
+    } catch (err) {
+      console.error("🔥 Erreur Ajout Demande:", err);
+      res.status(500).json({
+        message: "Erreur serveur",
+        error: err.message
+      });
+    }
+  });
 });
 
-// ─── 2. VALIDER DEMANDE (TRANSFERT VERS DOSSIER) ─────────────────────────────
+
+// ─────────────────────────────
+// 2. VALIDER UNE DEMANDE (CORRIGÉ)
+// ─────────────────────────────
 router.post('/valider/:id', async (req, res) => {
   const t = await sequelize.transaction();
+
   try {
-    const demande = await Demande.findByPk(req.params.id);
+    const demande = await Demande.findByPk(req.params.id, { transaction: t });
+
     if (!demande) {
       await t.rollback();
       return res.status(404).json({ message: "Demande introuvable" });
     }
 
-    // Génération du numéro de séquence (Ex: 2026-001)
+    // Numéro unique
     const count = await Dossier.count();
-    const num_sequence = `${new Date().getFullYear()}-${(count + 1).toString().padStart(3, '0')}`;
+    const num_sequence = `${new Date().getFullYear()}-${(count + 1)
+      .toString()
+      .padStart(3, '0')}`;
 
-    // Création du Dossier définitif
+    // Création dossier
     const dossier = await Dossier.create({
       num_sequence,
       nom_beneficiaire: demande.nom_beneficiaire,
@@ -63,60 +85,105 @@ router.post('/valider/:id', async (req, res) => {
       fonction: demande.fonction
     }, { transaction: t });
 
-    // Transfert des pièces jointes vers la table PieceDossier
-    if (demande.pieces && Array.isArray(demande.pieces)) {
-      const piecesData = demande.pieces.map(nomFichier => ({
-        nom: nomFichier,
-        dossierId: dossier.id
-      }));
-      
-      if (piecesData.length > 0) {
-        await PieceDossier.bulkCreate(piecesData, { transaction: t });
-      }
+    // Transfert des pièces
+    const pieces = Array.isArray(demande.pieces) ? demande.pieces : [];
+
+    const formattedPieces = pieces.map(p => ({
+      nom: p.nom,
+      type: p.type || 'image/png',
+      donnees: p.data,
+      dossierId: dossier.id
+    }));
+
+    if (formattedPieces.length > 0) {
+      await PieceDossier.bulkCreate(formattedPieces, { transaction: t });
     }
 
-    // Mise à jour du statut de la demande
-    demande.statut = "Validée";
-    await demande.save({ transaction: t });
+    // ✅ CORRECTION ICI (IMPORTANT)
+demande.statut = "Validée";
+await demande.save({ transaction: t });
 
     await t.commit();
-    res.json({ message: "Demande validée et Dossier créé", dossier });
+
+    res.json({
+      message: "Demande validée avec succès",
+      dossier
+    });
+
   } catch (err) {
-    if (t) await t.rollback();
-    console.error("Erreur Validation:", err);
-    res.status(500).json({ error: err.message });
+    await t.rollback();
+    console.error("🔥 Erreur validation:", err);
+
+    res.status(500).json({
+      message: "Erreur serveur",
+      error: err.message
+    });
   }
 });
 
-// ─── 3. RÉCUPÉRER TOUTES LES DEMANDES ────────────────────────────────────────
+
+// ─────────────────────────────
+// 3. RÉCUPÉRER DEMANDES
+// ─────────────────────────────
 router.get('/', async (req, res) => {
   try {
     const demandes = await Demande.findAll({
-      order: [['createdAt', 'DESC']]
+      attributes: [
+        'id',
+        'nom_beneficiaire',
+        'sexe',
+        'telephone',
+        'type_prestation',
+        'statut',
+        'createdAt'
+      ],
+      order: [['createdAt', 'DESC']],
+      limit: 20
     });
+
     res.json(demandes);
+
   } catch (err) {
-    console.error("Erreur Récupération demandes:", err);
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    res.status(500).json({
+      message: "Erreur récupération",
+      error: err.message
+    });
   }
 });
 
-// ─── 4. REJETER UNE DEMANDE ──────────────────────────────────────────────────
+
+// ─────────────────────────────
+// 4. REJETER UNE DEMANDE
+// ─────────────────────────────
 router.post('/rejeter/:id', async (req, res) => {
   try {
     const { motif } = req.body;
+
     const demande = await Demande.findByPk(req.params.id);
-    
-    if (!demande) return res.status(404).json({ message: "Demande introuvable" });
+
+    if (!demande) {
+      return res.status(404).json({ message: "Demande introuvable" });
+    }
 
     demande.statut = "Rejetée";
-    demande.motif_refus = motif || "Dossier incomplet ou non conforme";
+    demande.motif_refus = motif || "Dossier non conforme";
+
     await demande.save();
 
-    res.json({ message: "Demande refusée avec motif" });
+    res.json({ message: "Demande rejetée avec succès" });
+
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    res.status(500).json({
+      message: "Erreur serveur",
+      error: err.message
+    });
   }
 });
 
+
+// ─────────────────────────────
+// EXPORT
+// ─────────────────────────────
 module.exports = router;

@@ -230,7 +230,11 @@ const getLastDayOfMonth = () => {
     } catch (err) { console.error("Erreur chargement demandes:", err); }
   };
 
-  useEffect(() => { fetchDemandesEnLigne(); }, [activeTab]);
+  useEffect(() => {
+  if (activeTab === "en_ligne") {
+    fetchDemandesEnLigne();
+  }
+}, [activeTab]);
 
   // ── Fetch cliniques + historique ──
   useEffect(() => {
@@ -438,7 +442,8 @@ const handleSave = async () => {
   };
 
   // ── Exécuter la décision (valider / rejeter) ──
-  const executerDecision = async (id, action, motif, messageClient) => {
+const executerDecision = async (id, action, motif, messageClient) => {
+  try {
     const endpoint = action === "valider"
       ? `http://localhost:5001/api/demandes/valider/${id}`
       : `http://localhost:5001/api/demandes/rejeter/${id}`;
@@ -447,10 +452,22 @@ const handleSave = async () => {
       ? { message_client: messageClient }
       : { motif_refus: motif, message_client: messageClient };
 
+    console.log("➡️ Appel API :", endpoint, body);
+
     const res = await axios.post(endpoint, body);
-    if (res.status !== 200) throw new Error("Erreur serveur");
+
+    if (res.status !== 200) {
+      throw new Error("Réponse serveur invalide");
+    }
+
+    alert("✅ Action réussie !");
     await fetchDemandesEnLigne();
-  };
+
+  } catch (err) {
+    console.error("❌ ERREUR VALIDATION :", err.response?.data || err.message);
+    alert("❌ Erreur lors de la décision");
+  }
+};
 const annulerPrise = async (id) => {
   if (!window.confirm("Voulez-vous annuler cette prise en charge ?")) return;
 
