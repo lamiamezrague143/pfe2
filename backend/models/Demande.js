@@ -8,7 +8,12 @@ const Demande = sequelize.define('Demande', {
   date_naissance: { type: DataTypes.DATEONLY }, // Ajouté
   type_prestation: { type: DataTypes.STRING, allowNull: false },
   fonction: { type: DataTypes.STRING, defaultValue: "Personnel" },
-  pieces: { type: DataTypes.JSON, allowNull: false, defaultValue: [] },
+  // Ton modèle est déjà bon, assure-toi juste que 'pieces' est bien en JSON
+pieces: { 
+  type: DataTypes.JSON, 
+  allowNull: false, 
+  defaultValue: [] 
+},
   statut: { 
     type: DataTypes.ENUM('En attente', 'Validée', 'Rejetée'), 
     defaultValue: 'En attente' 

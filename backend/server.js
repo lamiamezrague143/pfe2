@@ -40,7 +40,7 @@ app.use(express.urlencoded({ extended: true }));
 // --- FICHIERS STATIQUES ---
 const uploadDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadDir)) { fs.mkdirSync(uploadDir); } // Crée le dossier si absent
-app.use('/uploads', express.static('uploads'));
+app.use('/api/uploads', express.static(path.join(__dirname, 'uploads')));
 
 
 // ... (après tes middlewares comme app.use(cors()))

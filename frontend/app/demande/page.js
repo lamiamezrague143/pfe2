@@ -219,23 +219,31 @@ export default function DemandePage() {
     setSubmitLoading(true);
     setSubmitMsg({ text: "", type: "" });
 
-    const fd = new FormData();
-    fd.append("nom_beneficiaire", `${prenom.trim()} ${nom.trim()}`);
-    fd.append("type_prestation", prestation);
-    fd.append("fonction", fonction || "Personnel");
-    // Tous les fichiers sous la clé "pieces"
-    fichiers.forEach((f) => fd.append("pieces", f));
+const fd = new FormData();
+fd.append("nom_beneficiaire", `${prenom.trim()} ${nom.trim()}`);
+fd.append("type_prestation", prestation);
+fd.append("fonction", fonction || "Personnel");
+
+fd.append("sexe", sexe);
+fd.append("telephone", telephone);
+fd.append("date_naissance", dateNaiss);
+
+fichiers.forEach((f) => fd.append("pieces", f));
 
     try {
-      await axios.post(`${API_BASE}/demandes/ajouter`, fd, {
-        headers: { "Content-Type": "multipart/form-data" }
-      });
+      await axios.post(`${API_BASE}/demandes/ajouter`, fd);
       setSubmitMsg({ text: "✅ Votre dossier a été soumis avec succès ! Vous pouvez suivre son statut dans 'Mes Demandes'.", type: "success" });
       resetForm();
       setTimeout(() => setActiveTab("list"), 2200);
-    } catch (err) {
-      setSubmitMsg({ text: "❌ Une erreur est survenue lors de l'envoi. Veuillez réessayer.", type: "error" });
-    } finally {
+    }catch (err) {
+  console.log("FULL ERROR:", err);
+  console.log("BACKEND RESPONSE:", err.response?.data);
+
+  setSubmitMsg({
+    text: JSON.stringify(err.response?.data) || err.message,
+    type: "error"
+  });
+}finally {
       setSubmitLoading(false);
     }
   };
@@ -468,19 +476,25 @@ export default function DemandePage() {
                             {pieces.length > 0 && (
                               <div className="flex flex-wrap gap-2 mt-2">
                                 {pieces.map((p, i) => {
-                                  const filename = typeof p === "string" ? p : p?.filename || p?.name || `Document ${i + 1}`;
-                                  return (
-                                    <a
-                                      key={i}
-                                      href={`${API_BASE}/uploads/pieces/${filename}`}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="flex items-center gap-1 text-[11px] bg-gray-100 text-gray-600 px-2 py-1 rounded hover:bg-blue-50 hover:text-blue-700 transition border border-gray-200"
-                                    >
-                                      <Paperclip size={10} /> {filename}
-                                    </a>
-                                  );
-                                })}
+  // On vérifie si p est un objet et s'il a une propriété 'type'
+  const isImage = p?.type?.includes('image'); 
+  
+  return (
+    <div key={i}>
+      {isImage ? (
+        <img src={p.data} alt={p.nom} className="w-20 h-20 object-cover rounded" />
+      ) : (
+        <a 
+          href={p?.data || "#"} 
+          download={p?.nom || "document"}
+          className="flex items-center gap-1 text-[11px] bg-blue-50 text-blue-700 px-2 py-1 rounded"
+        >
+          <Paperclip size={10} /> {p?.nom || "Fichier sans nom"}
+        </a>
+      )}
+    </div>
+  );
+})}
                               </div>
                             )}
                           </div>
