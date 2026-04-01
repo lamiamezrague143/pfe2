@@ -101,6 +101,7 @@ function DossierModal({ demande, onClose, onDecision }) {
                   className="flex-1 py-3 bg-emerald-600 text-white rounded-xl font-bold text-sm hover:bg-emerald-700 transition shadow-md shadow-emerald-200"
                 >
                   ✅ Valider le dossier
+                  
                 </button>
                 <button
                   onClick={() => setAction("rejeter")}

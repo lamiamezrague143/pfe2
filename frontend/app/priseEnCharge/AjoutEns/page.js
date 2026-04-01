@@ -5,6 +5,9 @@ import { UserPlus, Camera, Trash2, PlusCircle, RotateCcw, List, Edit3 } from "lu
 
 export default function AddTeacherForm() {
   // --- ÉTATS ---
+  // Dans tes constantes (en haut du fichier)
+const SEXES_AD = ["Masculin", "Féminin"];
+const SITUATIONS = ["Célibataire", "Marié(e)"];
   const [vueActive, setVueActive] = useState("formulaire");
   const [isEditing, setIsEditing] = useState(false);
   const [editingId, setEditingId] = useState(null);
@@ -26,9 +29,16 @@ export default function AddTeacherForm() {
   const [preview, setPreview] = useState(null);
   const [status, setStatus] = useState({ type: "", message: "" });
   const [ayantDroits, setAyantDroits] = useState([]);
-  const [newAyantDroit, setNewAyantDroit] = useState({
-    nom: "", prenom: "", dateNaissance: "", lieuNaissance: "", lien: "", photo: null
-  });
+const [newAyantDroit, setNewAyantDroit] = useState({
+  nom: "", 
+  prenom: "", 
+  dateNaissance: "", 
+  lieuNaissance: "", 
+  lien: "", 
+  sexe: "Masculin", // Ajout du sexe
+  situationMatrimoniale: "Célibataire", // Ajout situation
+  photo: null
+});
   
   const [termeRecherche, setTermeRecherche] = useState("");
   const [filtreCategorie, setFiltreCategorie] = useState("Tous");
@@ -71,12 +81,42 @@ export default function AddTeacherForm() {
     }
   };
 
-  const addAyantDroit = () => {
-    if (!newAyantDroit.nom || !newAyantDroit.prenom || !newAyantDroit.dateNaissance || !newAyantDroit.lieuNaissance || !newAyantDroit.lien) return;
-    setAyantDroits([...ayantDroits, newAyantDroit]);
-    setNewAyantDroit({ nom: "", prenom: "", dateNaissance: "", lieuNaissance: "", lien: "", photo: null });
-  };
+const addAyantDroit = () => {
+  // 1. Vérification des champs vides
+  if (!newAyantDroit.nom || !newAyantDroit.prenom || !newAyantDroit.dateNaissance || !newAyantDroit.lien) {
+    alert("Veuillez remplir tous les champs de l'ayant droit.");
+    return;
+  }
 
+  // 2. Calcul de l'âge
+  const dateNaissance = new Date(newAyantDroit.dateNaissance);
+  const aujourdhui = new Date();
+  let age = aujourdhui.getFullYear() - dateNaissance.getFullYear();
+  const m = aujourdhui.getMonth() - dateNaissance.getMonth();
+  if (m < 0 || (m === 0 && aujourdhui.getDate() < dateNaissance.getDate())) {
+    age--;
+  }
+
+  // 3. Règle pour les GARÇONS (Enfant de sexe Masculin)
+  if (newAyantDroit.lien === "Enfant" && newAyantDroit.sexe === "Masculin") {
+    if (age >= 18) {
+      alert("Erreur : Un enfant de sexe masculin doit avoir moins de 18 ans pour être pris en charge.");
+      return;
+    }
+  }
+
+  // 4. Règle pour les FILLES (Enfant de sexe Féminin)
+  if (newAyantDroit.lien === "Enfant" && newAyantDroit.sexe === "Féminin") {
+    if (newAyantDroit.situationMatrimoniale === "Marié(e)") {
+      alert("Erreur : Une fille mariée ne peut plus être déclarée comme ayant droit.");
+      return;
+    }
+  }
+
+  // Si tout est OK
+  setAyantDroits([...ayantDroits, newAyantDroit]);
+  setNewAyantDroit({ nom: "", prenom: "", dateNaissance: "", lieuNaissance: "", lien: "", sexe: "Masculin", situationMatrimoniale: "Célibataire", photo: null });
+};
   const removeAyantDroit = (index) => setAyantDroits(ayantDroits.filter((_, i) => i !== index));
 
   const resetForm = () => {
@@ -209,61 +249,136 @@ export default function AddTeacherForm() {
             </div>
 
             {/* SECTION AYANT DROIT */}
-            <div className="bg-green-50 p-6 rounded-3xl border border-green-100">
-              <h3 className="text-green-950 font-black mb-4 flex items-center gap-2 text-sm uppercase"><PlusCircle size={18} /> Ajouter Ayant Droit</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-                <input placeholder="Nom" value={newAyantDroit.nom} onChange={(e) => setNewAyantDroit({...newAyantDroit, nom: e.target.value})} className="p-3 rounded-xl border-none shadow-inner" />
-                <input placeholder="Prénom" value={newAyantDroit.prenom} onChange={(e) => setNewAyantDroit({...newAyantDroit, prenom: e.target.value})} className="p-3 rounded-xl border-none shadow-inner" />
-                
-                {/* Upload Photo Ayant Droit avec Preview */}
-                <div className="flex items-center gap-2 bg-white p-2 rounded-xl shadow-inner">
-                  <label className="cursor-pointer p-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors">
+            {/* SECTION AYANT DROIT */}
+<div className="bg-gray-50/50 p-8 rounded-3xl border border-gray-100">
+  <div className="flex items-center justify-between mb-6">
+    <div>
+      <h3 className="text-slate-800 font-black flex items-center gap-2 text-lg uppercase tracking-tight">
+        <PlusCircle size={22} className="text-green-800" /> 
+        Membres de la Famille
+      </h3>
+      <p className="text-gray-400 text-xs font-medium ml-8">Ajoutez les ayants droit (enfants, conjoint...)</p>
+    </div>
+  </div>
+
+  {/* Formulaire d'ajout rapide */}
+  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 mb-6">
+    <div className="space-y-1">
+      <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Nom</label>
+      <input 
+        placeholder="Nom de famille" 
+        value={newAyantDroit.nom} 
+        onChange={(e) => setNewAyantDroit({...newAyantDroit, nom: e.target.value})} 
+        className="w-full p-3.5 bg-white border-none rounded-2xl shadow-sm focus:ring-2 focus:ring-green-100 outline-none transition-all" 
+      />
+    </div>
+
+    <div className="space-y-1">
+      <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Prénom</label>
+      <input 
+        placeholder="Prénom" 
+        value={newAyantDroit.prenom} 
+        onChange={(e) => setNewAyantDroit({...newAyantDroit, prenom: e.target.value})} 
+        className="w-full p-3.5 bg-white border-none rounded-2xl shadow-sm focus:ring-2 focus:ring-green-100 outline-none transition-all" 
+      />
+    </div>
+
+    <div className="space-y-1">
+      <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Date de Naissance</label>
+      <input 
+        type="date" 
+        value={newAyantDroit.dateNaissance} 
+        onChange={(e) => setNewAyantDroit({...newAyantDroit, dateNaissance: e.target.value})} 
+        className="w-full p-3.5 bg-white border-none rounded-2xl shadow-sm focus:ring-2 focus:ring-green-100 outline-none transition-all text-gray-600" 
+      />
+    </div>
+
+    <div className="space-y-1">
+      <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Lien de parenté</label>
+      <select 
+        value={newAyantDroit.lien} 
+        onChange={(e) => setNewAyantDroit({...newAyantDroit, lien: e.target.value})} 
+        className="w-full p-3.5 bg-white border-none rounded-2xl shadow-sm focus:ring-2 focus:ring-green-100 outline-none transition-all text-gray-600"
+      >
+        <option value="">Sélectionner...</option>
+        {LIENS.map(l => <option key={l} value={l}>{l}</option>)}
+      </select>
+    </div>
+
+    <div className="grid grid-cols-2 gap-3">
+      <div className="space-y-1">
+        <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Sexe</label>
+        <select 
+          value={newAyantDroit.sexe} 
+          onChange={(e) => setNewAyantDroit({...newAyantDroit, sexe: e.target.value})}
+          className="w-full p-3.5 bg-white border-none rounded-2xl shadow-sm focus:ring-2 focus:ring-green-100 outline-none transition-all text-gray-600"
+        >
+          {SEXES_AD.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+      </div>
+      <div className="space-y-1">
+        <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">État Civil</label>
+        <select 
+          value={newAyantDroit.situationMatrimoniale} 
+          onChange={(e) => setNewAyantDroit({...newAyantDroit, situationMatrimoniale: e.target.value})}
+          className="w-full p-3.5 bg-white border-none rounded-2xl shadow-sm focus:ring-2 focus:ring-green-100 outline-none transition-all text-gray-600"
+        >
+          {SITUATIONS.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+      </div>
+    </div>
+
+    <div className="flex items-end gap-3">
+        <div className="flex-1 space-y-1">
+            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1 text-center block">Photo</label>
+            <div className="flex items-center justify-center gap-3 bg-white p-2 rounded-2xl shadow-sm h-[52px]">
+                <label className="cursor-pointer p-2 bg-gray-50 text-gray-500 rounded-xl hover:bg-green-50 hover:text-green-700 transition-all border border-dashed border-gray-200">
                     <Camera size={20} />
                     <input type="file" className="hidden" onChange={handleAyantDroitPhoto} />
-                  </label>
-                  {newAyantDroit.photo ? (
-                    <div className="flex items-center gap-2">
-                        <img src={URL.createObjectURL(newAyantDroit.photo)} className="w-8 h-8 rounded-full object-cover border-2 border-green-500" />
-                        <span className="text-[10px] font-bold text-green-600">Prêt</span>
-                    </div>
-                  ) : (
-                    <span className="text-[10px] text-gray-400 uppercase">Photo</span>
-                  )}
-                </div>
-
-                <select value={newAyantDroit.lien} onChange={(e) => setNewAyantDroit({...newAyantDroit, lien: e.target.value})} className="p-3 rounded-xl border-none shadow-inner text-gray-600">
-                  <option value="">Lien de parenté...</option>
-                  {LIENS.map(l => <option key={l} value={l}>{l}</option>)}
-                </select>
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
-                <input type="date" value={newAyantDroit.dateNaissance} onChange={(e) => setNewAyantDroit({...newAyantDroit, dateNaissance: e.target.value})} className="p-3 rounded-xl border-none shadow-inner text-gray-500" />
-                <input placeholder="Lieu de Naissance" value={newAyantDroit.lieuNaissance} onChange={(e) => setNewAyantDroit({...newAyantDroit, lieuNaissance: e.target.value})} className="p-3 rounded-xl border-none shadow-inner" />
-                <button type="button" onClick={addAyantDroit} className="bg-green-900 text-white rounded-xl font-bold py-3 hover:bg-green-700">Ajouter</button>
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                {ayantDroits.map((ad, i) => (
-                  <div key={i} className="bg-white px-3 py-1.5 rounded-lg border border-green-200 text-xs font-bold flex items-center gap-3">
-                    {ad.photo && (
-                      <div className="w-6 h-6 rounded-full bg-gray-200 overflow-hidden border border-green-100">
-                        <img 
-  src={
-    ad.photo 
-      ? (ad.photo instanceof File ? URL.createObjectURL(ad.photo) : ad.photo)
-      : `https://ui-avatars.com/api/?name=${ad.nom}+${ad.prenom}&background=random`
-  } 
-  className="w-full h-full object-cover" 
-/>
-                      </div>
-                    )}
-                    <span>{ad.nom} {ad.prenom} ({ad.lien})</span>
-                    <Trash2 size={14} className="text-red-400 cursor-pointer hover:text-red-600" onClick={() => removeAyantDroit(i)} />
-                  </div>
-                ))}
-              </div>
+                </label>
+                {newAyantDroit.photo ? (
+                    <img src={URL.createObjectURL(newAyantDroit.photo)} className="w-9 h-9 rounded-full object-cover border-2 border-green-500 shadow-sm" />
+                ) : (
+                    <div className="w-9 h-9 rounded-full bg-gray-100 border border-gray-200" />
+                )}
             </div>
+        </div>
+        <button 
+          type="button" 
+          onClick={addAyantDroit} 
+          className="h-[52px] px-6 bg-green-900 text-white rounded-2xl font-black hover:bg-green-800 transition-all shadow-md active:scale-95"
+        >
+          AJOUTER
+        </button>
+    </div>
+  </div>
+
+  {/* Liste des ayants droits ajoutés */}
+  <div className="flex flex-wrap gap-3 pt-4 border-t border-gray-100">
+    {ayantDroits.length === 0 && <p className="text-gray-400 italic text-[11px] py-2">Aucun ayant droit ajouté pour le moment...</p>}
+    {ayantDroits.map((ad, i) => (
+      <div key={i} className="flex items-center gap-3 bg-white pl-2 pr-4 py-2 rounded-2xl border border-gray-100 shadow-sm group animate-in zoom-in-95 duration-200">
+        <div className="w-10 h-10 rounded-xl overflow-hidden bg-gray-50 border border-gray-100">
+          <img 
+            src={ad.photo ? (ad.photo instanceof File ? URL.createObjectURL(ad.photo) : ad.photo) : `https://ui-avatars.com/api/?name=${ad.nom}+${ad.prenom}&background=random`} 
+            className="w-full h-full object-cover" 
+          />
+        </div>
+        <div>
+            <div className="text-[11px] font-black text-slate-800 uppercase leading-none">{ad.nom} {ad.prenom}</div>
+            <div className="text-[9px] font-bold text-green-700 uppercase mt-1">{ad.lien} • {ad.sexe}</div>
+        </div>
+        <button 
+          type="button"
+          onClick={() => removeAyantDroit(i)}
+          className="ml-2 p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+        >
+          <Trash2 size={16} />
+        </button>
+      </div>
+    ))}
+  </div>
+</div>
 
             <div className="pt-6 border-t flex flex-col md:flex-row gap-4">
               <button type="submit" className="flex-1 py-5 bg-green-900 text-white font-black rounded-2xl shadow-lg hover:bg-green-800 transition-all uppercase tracking-widest text-lg">

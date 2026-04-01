@@ -1,7 +1,10 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-
+import { 
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell 
+} from 'recharts';
+import { ClipboardList, Activity, Shield, Search } from 'lucide-react';
 const PieChart = ({ title, data, colors }) => {
   const total = Object.values(data).reduce((a, b) => a + b, 0);
   let cumulativePercent = 0;
@@ -200,7 +203,16 @@ const statsPrestations = history.reduce((acc, curr) => {
   });
   return acc;
 }, {}); 
+// Transformer l'objet statsPrestations en tableau trié pour le graphique
+const dataStatsBar = Object.keys(statsPrestations)
+  .map(name => ({
+    name: name.length > 12 ? name.substring(0, 12) + ".." : name,
+    total: statsPrestations[name]
+  }))
+  .sort((a, b) => b.total - a.total) // Trier du plus grand au plus petit
+  .slice(0, 5); // Garder le Top 5
 
+const COLORS_BAR = ['#064e3b', '#059669', '#10b981', '#34d399', '#6ee7b7'];
 const clientsRegroupes = history.reduce((acc, curr) => {
   // On récupère le nom du patient (pNom + pPrenom)
   const clientKey = `${curr.pNom || ''} ${curr.pPrenom || ''}`.toUpperCase().trim() || "INCONNU";
@@ -306,7 +318,9 @@ else if (
   const hasAnyAnnulee = maxAnnulees > 0;
 
   return (
+    
     <div className="mb-12">
+      
       <div className={`flex justify-between items-center mb-4 border-l-8 ${colorBorder} pl-4`}>
         <h2 className="text-xl font-black text-gray-800 uppercase tracking-tight">{title}</h2>
         <span className="text-xs font-bold text-gray-500 bg-gray-100 px-3 py-1 rounded-full border">
@@ -470,6 +484,7 @@ else if (
 
   return (
     <div className="min-h-screen bg-gray-50 p-8">
+      
       <div className="max-w-7xl mx-auto">
         <header className="mb-10 flex justify-between items-end">
           <div>
@@ -485,7 +500,35 @@ else if (
           <PieChart title="Répartition par Prestations" data={statsPrestations} colors={["#3b82f6", "#8b5cf6", "#ec4899", "#10b981", "#f59e0b"]} />
           <PieChart title="Répartition par Grades" data={statsGrades} colors={["#0f172a", "#3b82f6", "#94a3b8"]} />
         </div>
-
+        {/* --- SECTION GRAPHIQUE À BARRES --- */}
+<div className="bg-white p-8 rounded-[30px] shadow-xl border border-gray-100 mb-10">
+  <h2 className="text-xl font-black text-slate-800 mb-8 uppercase tracking-widest border-b pb-4">
+    Top 5 des Prestations
+  </h2>
+  <div className="h-[350px] w-full">
+    <ResponsiveContainer width="100%" height="100%">
+      <BarChart data={dataStatsBar}>
+        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+        <XAxis 
+          dataKey="name" 
+          axisLine={false} 
+          tickLine={false} 
+          tick={{fill: '#64748b', fontSize: 10, fontWeight: 800}} 
+        />
+        <YAxis axisLine={false} tickLine={false} />
+        <Tooltip 
+          cursor={{fill: '#f8fafc'}} 
+          contentStyle={{borderRadius: '15px', border: 'none', boxShadow: '0 10px 15px rgba(0,0,0,0.1)'}} 
+        />
+        <Bar dataKey="total" radius={[10, 10, 0, 0]} barSize={50}>
+          {dataStatsBar.map((entry, index) => (
+            <Cell key={`cell-${index}`} fill={COLORS_BAR[index % COLORS_BAR.length]} />
+          ))}
+        </Bar>
+      </BarChart>
+    </ResponsiveContainer>
+  </div>
+</div>
         <div className="bg-white p-6 rounded-xl shadow-md mb-8 border-l-8 border-blue-900 grid grid-cols-1 md:grid-cols-4 gap-6">
           <div>
             <label className="block text-[10px] font-black text-gray-400 uppercase mb-2">Plafond Général (DA)</label>
