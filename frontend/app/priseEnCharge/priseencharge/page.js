@@ -195,7 +195,7 @@ export default function FormulairePriseEnCharge() {
     ref: "", dateForm: new Date().toLocaleDateString("fr-FR"), prestation: "", conventionStartDate: "", conventionEndDate: "",
     fNom: "", fPrenom: "", fDateLieu: "", fFonction: "", fVivant: "Oui",
     pNom: "", pPrenom: "", pDateLieu: "", pLien: "",
-    nbDate: "", nbDelivre: "", montantTotal: "", sfEtablissement: ""
+    nbDate: "", nbDelivre: "", montantTotal: "", sfEtablissement: "", agentNom: "" // ✅ CORRECTION ICI
   };
 
   const [resteDisponible, setResteDisponible] = useState(null);
@@ -208,7 +208,7 @@ export default function FormulairePriseEnCharge() {
   const [selectedUserFull, setSelectedUserFull] = useState(null);
   const [isBlocked, setIsBlocked] = useState(false);
   const [demandesEnLigne, setDemandesEnLigne] = useState([]);
-
+  const [agents, setAgents] = useState([]);
   // Modal state
   const [selectedDemande, setSelectedDemande] = useState(null);
   const [showModal, setShowModal] = useState(false);
@@ -219,7 +219,6 @@ export default function FormulairePriseEnCharge() {
 const getLastDayOfMonth = () => {
   const date = new Date();
   const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0);
-  // Renvoie le format YYYY-MM-DD
   return lastDay.toISOString().split('T')[0]; 
 };
 
@@ -236,7 +235,19 @@ const getLastDayOfMonth = () => {
     fetchDemandesEnLigne();
   }
 }, [activeTab]);
+useEffect(() => {
+  const fetchAgents = async () => {
+    try {
+      const res = await fetch("http://localhost:5001/api/agents");
+      const data = await res.json();
+      setAgents(data);
+    } catch (err) {
+      console.error("Erreur agents:", err);
+    }
+  };
 
+  fetchAgents();
+}, []);
   // ── Fetch cliniques + historique ──
   useEffect(() => {
     const fetchData = async () => {
@@ -250,25 +261,22 @@ const getLastDayOfMonth = () => {
           const allData = await resHistory.json();
           const currentYear = new Date().getFullYear();
           setHistory(allData.filter(item => new Date(item.createdAt).getFullYear() === currentYear));
-          console.log("DATA BACKEND 👉", allData); // ✅ ici
+          console.log("DATA BACKEND 👉", allData);
         }
       } catch (err) { console.error("ERREUR RÉSEAU:", err); }
     };
     fetchData();
   }, []);
 
-  // ── Génération de la référence ──
   // ── Génération de la référence sécurisée ──
   useEffect(() => {
   const genererRef = async () => {
-    // 1. On vérifie que sfEtablissement existe ET n'est pas "undefined" (string)
     if (!formData.sfEtablissement || formData.sfEtablissement === "undefined" || cliniques.length === 0) return;
     
     const selected = cliniques.find(c => String(c.id) === String(formData.sfEtablissement));
     
     if (selected && selected.id) {
       try {
-        // Ajout d'un log pour vérifier l'URL exacte appelée dans ta console
         console.log("Appel API vers :", `http://localhost:5001/api/prise-en-charge/prochain-numero/${selected.id}`);
 
         const res = await fetch(`http://localhost:5001/api/prise-en-charge/prochain-numero/${selected.id}`);
@@ -284,7 +292,6 @@ const getLastDayOfMonth = () => {
 
         setFormData(prev => ({
           ...prev,
-          // On s'assure que ref est bien mis à jour
           ref: `${selected.numeroSequence || 'REF'}/${prochainNumero}/SG/COS/${year}`,
           conventionStartDate: selected.dateAjout ? selected.dateAjout.split("T")[0] : "",
         }));
@@ -313,7 +320,7 @@ const getLastDayOfMonth = () => {
 
 const totalConsomme = history
   .filter(item => {
-    if (item.annule) return false;  // ← AJOUTER CETTE LIGNE
+    if (item.annule) return false;
     if (!item.pNom || !item.pPrenom || !item.prestation) return false;
     const sameUser = item.pNom.toUpperCase() === user.nomComplet.toUpperCase() &&
                      item.pPrenom.toUpperCase() === user.prenomComplet.toUpperCase();
@@ -403,11 +410,12 @@ const handleSave = async () => {
       // NB
       nbDate:    formData.nbDate,
       nbDelivre: formData.nbDelivre,
+      // agentNom
+      agentNom: formData.agentNom,
       // Clinique
       sfEtablissement: parseInt(formData.sfEtablissement),
     };
  
-    // ✅ URL corrigée : POST / (pas /ajouter)
     const response = await fetch("http://localhost:5001/api/prise-en-charge/", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -477,7 +485,6 @@ const annulerPrise = async (id) => {
 
     alert("✅ Prise en charge annulée");
 
-    // recharge les données
     const res = await fetch("http://localhost:5001/api/prise-en-charge/all");
     const data = await res.json();
 
@@ -507,10 +514,8 @@ const annulerPrise = async (id) => {
     .tab-en-ligne { display: none !important; }
     .tab-consulter { display: none !important; }
     
-    /* Cache la navbar de l'app parent (SG/COS, Dashboard...) */
     nav, header { display: none !important; }
     
-    /* Cache les selects et affiche juste le texte */
     select { display: none !important; }
     .print-value { display: inline !important; }
     
@@ -776,17 +781,45 @@ const annulerPrise = async (id) => {
 
             <div className="flex justify-between font-bold underline mt-4">
               <div>L'intéressé(e)</div>
+               <div  className="agent-field">
+  <span className="font-bold">Agents :</span>
+
+  <select
+    name="agentNom"
+    value={formData.agentNom}
+    onChange={(e) =>
+      setFormData(prev => ({
+        ...prev,
+        agentNom: e.target.value
+      }))
+    }
+    className="border p-2 rounded w-full"
+  >
+    <option value="">-- Choisir un agent --</option>
+
+    {agents.map((a) => (
+      <option key={a.id} value={a.nom}>
+        {a.nom}
+      </option>
+    ))}
+  </select>
+</div>
               <div>La Structure de Gestion</div>
+              
+                
+          </div>
             </div>
+            <div>
+
 
             {/* Service Fait */}
             <div>
               <h2 className="text-center font-bold text-lg underline uppercase">Service Fait</h2>
               <div className="space-y-4 mt-4">
-                <div className="flex gap-2"><span>Nom et Prénom du patient :</span> <div className="flex-1 border-b border-black font-bold uppercase">{formData.pNom} {formData.pPrenom}</div></div>
-                <div className="flex gap-2"><span>Date et lieu de Naissance :</span> <div className="flex-1 border-b border-black font-bold uppercase">{formData.pDateLieu}</div></div>
-                <div className="flex gap-2"><span>Désignation de la prestation :</span> <div className="flex-1 border-b border-black">{formData.prestation}</div></div>
-                <div className="flex gap-2 font-bold"><span>Montant de la prestation "70%" :</span> <div className="flex-1 border-b border-black">{formData.montantTotal}</div> <span>DA</span></div>
+                <div className="flex gap-2"><span>Nom et Prénom du patient :</span> <div className="flex-1 border-b border-black font-bold uppercase"></div></div>
+                <div className="flex gap-2"><span>Date et lieu de Naissance :</span> <div className="flex-1 border-b border-black font-bold uppercase"></div></div>
+                <div className="flex gap-2"><span>Désignation de la prestation :</span> <div className="flex-1 border-b border-black"></div></div>
+                <div className="flex gap-2 font-bold"><span>Montant de la prestation "70%" :</span> <div className="flex-1 border-b border-black"></div> <span>DA</span></div>
                 <div className="flex justify-between items-end pt-6">
                   <QRCodeSVG value={qrData} size={80} />
                   <div className="text-center min-w-[250px]">
@@ -822,12 +855,12 @@ const annulerPrise = async (id) => {
                     <th className="p-3 text-right">Montant</th>
                     <th className="p-3">Date</th>
                     <th className="p-3 text-center">Action</th> 
+                    <th className="p-3">Agent</th>
                   </tr>
                 </thead>
                 <tbody>
 {history.map((item) => (
   <tr key={item.id} className={`border-b transition-colors ${item.annule ? 'bg-red-50 opacity-60' : 'hover:bg-blue-50'}`}>
-    {/* ✅ ref est un champ direct du modèle Prise */}
 <td className="p-3 font-mono font-bold">
   <span className={item.annule ? 'line-through text-gray-400' : ''}>{item.ref || item.numeroSequentiel || "—"}</span>
 </td>
@@ -856,6 +889,9 @@ const annulerPrise = async (id) => {
       Annuler
     </button>
   )}
+</td>
+<td className="p-3">
+  {item.agentNom || "—"}
 </td>
   </tr>
 ))}

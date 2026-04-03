@@ -3,12 +3,19 @@ const express = require("express");
 const cors = require("cors");
 const path = require("path");
 const fs = require("fs");
+const http = require("http");
+const { Server } = require("socket.io");
+const app = express();
+
+
+const server = http.createServer(app);
+
 
 // --- DB & Modèles ---
 const { sequelize } = require("./config/db");
 const { User, Prise } = require("./models"); 
 const Setting = require("./models/Setting"); 
-
+const Message = require("./models/Message");
 // --- CORRECTION ICI : Utilisez ./ car server.js est au même niveau que le dossier models ---
 const Etat = require('./models/Etat');
 const LigneEtat = require('./models/LigneEtat');
@@ -22,13 +29,17 @@ const dossierRoutes = require('./routes/dossierRoutes');
 const prestationRoutes = require('./routes/prestationRoutes');
 const demandeRoutes = require('./routes/demandeRoutes'); 
 const etatRoutes = require('./routes/etatRoutes');      
+const agentRoutes = require("./routes/agentRoutes")
 // 1. Importation de la route
 const pieceRoutes = require('./routes/pieceRoutes');
 const captchaRoutes = require('./routes/captchaRoutes'); // Adapte le chemin
-
+// En haut avec tes autres requires
+const messageRoutes = require("./routes/messageRoutes");
 // ... après tes middlewares (cors, json, etc.)
 const session = require('express-session');
-const app = express();
+
+const noteRoutes = require("./routes/noteRoutes");
+
 
 
 app.use(session({
@@ -69,6 +80,10 @@ app.use('/api/demandes', demandeRoutes); // Ajouté ici
 app.use('/api/etats', etatRoutes);
 app.use('/api/dossiers', dossierRoutes);
 app.use('/api', captchaRoutes);
+app.use("/api/messages", messageRoutes);
+app.use("/api/agents", require("./routes/agentRoutes"));
+app.use("/api/notes", noteRoutes);
+
 app.get("/api/test", (req, res) => {
   res.json({ message: "Backend fonctionne !" });
 });
@@ -93,7 +108,41 @@ const initSettings = async () => {
     console.error("❌ Erreur lors de l'init des settings:", err);
   }
 };
+const io = new Server(server, {
+  cors: {
+    origin: "http://localhost:3000",
+    credentials: true,
+  },
+});
 
+io.on("connection", (socket) => {
+  console.log("✅ Client connecté :", socket.id);
+
+  socket.on("join", (userId) => {
+    socket.join(userId);
+    console.log(`👤 User ${userId} joined room`);
+  });
+
+  socket.on("send_message", async (data) => {
+    try {
+      const message = await Message.create({
+        senderId: data.senderId,
+        receiverId: data.receiverId,
+        content: data.content,
+      });
+
+      io.to(message.receiverId).emit("receive_message", message);
+      io.to(message.senderId).emit("receive_message", message);
+
+    } catch (err) {
+      console.error("❌ Erreur socket :", err);
+    }
+  });
+
+  socket.on("disconnect", () => {
+    console.log("❌ Client déconnecté :", socket.id);
+  });
+});
 // --- DÉMARRAGE SÉCURISÉ ---
 const PORT = process.env.PORT || 5001;
 
@@ -105,10 +154,11 @@ sequelize.sync({ alter: true })
     // Initialisation des plafonds par défaut
     await initSettings();
     
-    app.listen(PORT, () => {
+    server.listen(PORT, () => {
       console.log(`🚀 Serveur lancé sur http://localhost:${PORT}`);
     });
   })
   .catch((err) => {
     console.error("❌ Erreur de synchronisation ou connexion :", err);
   });
+
