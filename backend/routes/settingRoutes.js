@@ -1,31 +1,65 @@
 const express = require('express');
 const router = express.Router();
-const { Setting } = require('../models');
 
-// GET : Récupérer les plafonds
+// ✅ FIX IMPORTANT : import direct du modèle
+const Setting = require('../models/Setting');
+
+// ─────────────────────────────────────────────
+// GET : Récupérer tous les settings
+// ─────────────────────────────────────────────
 router.get('/', async (req, res) => {
   try {
     const settings = await Setting.findAll();
+
     const settingsObj = {};
     settings.forEach(s => {
       settingsObj[s.key] = s.value;
     });
+
     res.json(settingsObj);
+
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error("Erreur GET settings:", err);
+    res.status(500).json({ error: "Erreur serveur" });
   }
 });
 
+// ─────────────────────────────────────────────
 // POST : Mettre à jour un plafond
+// ─────────────────────────────────────────────
 router.post('/update', async (req, res) => {
-  const { key, value } = req.body;
   try {
-    await Setting.update({ value: String(value) }, { where: { key } });
-    res.json({ message: "Mis à jour" });
+    const { key, value } = req.body;
+
+    // ✅ Validation propre
+    if (!key || value === undefined) {
+      return res.status(400).json({ error: "key et value sont requis" });
+    }
+
+    console.log("UPDATE SETTING:", key, value);
+
+    // ✅ Chercher le setting
+    let setting = await Setting.findByPk(key);
+
+    if (setting) {
+      // Mise à jour
+      await setting.update({ value: String(value) });
+    } else {
+      // Création
+      setting = await Setting.create({ key, value: String(value) });
+    }
+
+    res.json({
+      success: true,
+      message: "Mis à jour avec succès",
+      setting
+    });
+
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error("❌ Erreur update setting:", err);
+    res.status(500).json({ error: "Erreur serveur" });
   }
 });
 
-// ✅ CORRECTION ICI : On exporte le ROUTER pour server.js
+// ─────────────────────────────────────────────
 module.exports = router;

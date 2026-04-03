@@ -119,20 +119,40 @@ useEffect(() => {
   fetchData();
 }, []);
 
-  const updatePlafondDB = async (key, value) => {
-    const val = Number(value);
-    if (key === 'plafond_general')  setPlafondGeneral(val);
-    if (key === 'plafond_dentaire') setPlafondDentaire(val);
-    if (key === 'plafond_ophta')    setPlafondOphta(val);
-    try {
-      await fetch("http://localhost:5001/api/settings/update", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ key, value: String(val) })
-      });
-    } catch (err) { console.error("Erreur de sauvegarde:", err); }
-  };
-
+// ✅ Version corrigée
+const updatePlafondDB = async (key, value) => {
+  const val = Number(value);
+  
+  // Mettre à jour l'état local immédiatement (feedback utilisateur)
+  if (key === 'plafond_general') setPlafondGeneral(val);
+  if (key === 'plafond_dentaire') setPlafondDentaire(val);
+  if (key === 'plafond_ophta') setPlafondOphta(val);
+  
+  try {
+    const response = await fetch("http://localhost:5001/api/settings/update", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key, value: String(val) })
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Erreur HTTP: ${response.status}`);
+    }
+    
+    const result = await response.json();
+    console.log("✅ Sauvegardé:", result);
+    
+    // ✅ Recharger les données pour être sûr
+    await fetchData();
+    
+  } catch (err) { 
+    console.error("❌ Erreur de sauvegarde:", err);
+    alert("Erreur lors de la sauvegarde du plafond");
+    
+    // Recharger les anciennes valeurs en cas d'erreur
+    await fetchData();
+  }
+};
 const statsGrades = history.reduce((acc, curr) => {
   const fonctionRaw = 
     curr.pieces?.fonction || 

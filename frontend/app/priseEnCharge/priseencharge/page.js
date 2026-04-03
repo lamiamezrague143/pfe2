@@ -141,7 +141,7 @@ function DossierModal({ demande, onClose, onDecision }) {
                   {motif === "Autre" && (
                     <textarea
                       placeholder="Précisez le motif..."
-                      onChange={e => setMotif(e.target.value === "Autre" ? "" : e.target.value)}
+                      onChange={e => setMotif(e.target.value)}
                       className="mt-2 w-full border border-gray-200 rounded-xl p-3 text-sm resize-none h-20 outline-none focus:ring-2 focus:ring-red-400"
                     />
                   )}
@@ -209,6 +209,10 @@ export default function FormulairePriseEnCharge() {
   const [isBlocked, setIsBlocked] = useState(false);
   const [demandesEnLigne, setDemandesEnLigne] = useState([]);
   const [agents, setAgents] = useState([]);
+  const [plafondGeneral, setPlafondGeneral] = useState(130000);
+const [plafondDentaire, setPlafondDentaire] = useState(50000);
+const [plafondOphta, setPlafondOphta] = useState(50000);
+
   // Modal state
   const [selectedDemande, setSelectedDemande] = useState(null);
   const [showModal, setShowModal] = useState(false);
@@ -249,25 +253,29 @@ useEffect(() => {
   fetchAgents();
 }, []);
   // ── Fetch cliniques + historique ──
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [resClinics, resHistory] = await Promise.all([
-          fetch("http://localhost:5001/api/clinics/all"),
-          fetch("http://localhost:5001/api/prise-en-charge/all")
-        ]);
-        if (resClinics.ok) setCliniques(await resClinics.json());
-        if (resHistory.ok) {
-          const allData = await resHistory.json();
-          const currentYear = new Date().getFullYear();
-          setHistory(allData.filter(item => new Date(item.createdAt).getFullYear() === currentYear));
-          console.log("DATA BACKEND 👉", allData);
-        }
-      } catch (err) { console.error("ERREUR RÉSEAU:", err); }
-    };
-    fetchData();
-  }, []);
-
+useEffect(() => {
+  const fetchData = async () => {
+    try {
+      // Charger les plafonds d'abord
+      await fetchPlafonds();
+      
+      const [resClinics, resHistory] = await Promise.all([
+        fetch("http://localhost:5001/api/clinics/all"),
+        fetch("http://localhost:5001/api/prise-en-charge/all")
+      ]);
+      
+      if (resClinics.ok) setCliniques(await resClinics.json());
+      if (resHistory.ok) {
+        const allData = await resHistory.json();
+        const currentYear = new Date().getFullYear();
+        setHistory(allData.filter(item => new Date(item.createdAt).getFullYear() === currentYear));
+      }
+    } catch (err) { 
+      console.error("ERREUR RÉSEAU:", err); 
+    }
+  };
+  fetchData();
+}, []);
   // ── Génération de la référence sécurisée ──
   useEffect(() => {
   const genererRef = async () => {
@@ -304,39 +312,50 @@ useEffect(() => {
 }, [formData.sfEtablissement, cliniques]);
 
   // ── Calcul du reste disponible ──
-  const calculerReste = (user, prestation) => {
-    if (!user) return;
-    const prestUpper = (prestation || "").toUpperCase();
-    const isDentaire = prestUpper.includes("DENT");
-    const isOphta = prestUpper.includes("OPHTA") || prestUpper.includes("OEIL");
+// ✅ Version corrigée - utilise les states, pas localStorage
+useEffect(() => {
+  if (selectedUserFull && formData.prestation) {
+    calculerReste(selectedUserFull, formData.prestation);
+  }
+}, [plafondGeneral, plafondDentaire, plafondOphta, history, selectedUserFull, formData.prestation]);
+const calculerReste = (user, prestation) => {
+  if (!user) return;
 
-    const plafondGen   = parseFloat(localStorage.getItem("plafond_general"))  || 130000;
-    const plafondDent  = parseFloat(localStorage.getItem("plafond_dentaire")) || 50000;
-    const plafondOphta = parseFloat(localStorage.getItem("plafond_ophta"))    || 20000;
+  const prestUpper = (prestation || "").toUpperCase();
+  const isDentaire = prestUpper.includes("DENT");
+  const isOphta = prestUpper.includes("OPHTA") || prestUpper.includes("OEIL");
 
-    let plafondApplique = plafondGen;
-    if (isDentaire) plafondApplique = plafondDent;
-    if (isOphta)    plafondApplique = plafondOphta;
+  let plafondApplique = plafondGeneral;
+  if (isDentaire) plafondApplique = plafondDentaire;
+  if (isOphta) plafondApplique = plafondOphta;
 
-const totalConsomme = history
-  .filter(item => {
-    if (item.annule) return false;
-    if (!item.pNom || !item.pPrenom || !item.prestation) return false;
-    const sameUser = item.pNom.toUpperCase() === user.nomComplet.toUpperCase() &&
-                     item.pPrenom.toUpperCase() === user.prenomComplet.toUpperCase();
-    if (!sameUser) return false;
-    const itemPrest = item.prestation.toUpperCase();
-    if (isDentaire) return itemPrest.includes("DENT");
-    if (isOphta)    return itemPrest.includes("OPHTA") || itemPrest.includes("OEIL");
-    return !itemPrest.includes("DENT") && !itemPrest.includes("OPHTA") && !itemPrest.includes("OEIL");
-  })
-  .reduce((sum, item) => sum + parseFloat(item.montantTotal || 0), 0);
+  const totalConsomme = history
+    .filter(item => {
+      if (item.annule) return false;
+      if (!item.pNom || !item.pPrenom || !item.prestation) return false;
 
-    const solde = plafondApplique - totalConsomme;
-    setResteDisponible(solde);
-    setIsBlocked(solde <= 0);
-  };
+      const sameUser =
+        item.pNom.toUpperCase() === user.nomComplet.toUpperCase() &&
+        item.pPrenom.toUpperCase() === user.prenomComplet.toUpperCase();
 
+      if (!sameUser) return false;
+
+      const itemPrest = item.prestation.toUpperCase();
+
+      if (isDentaire) return itemPrest.includes("DENT");
+      if (isOphta) return itemPrest.includes("OPHTA") || itemPrest.includes("OEIL");
+
+      return !itemPrest.includes("DENT") &&
+             !itemPrest.includes("OPHTA") &&
+             !itemPrest.includes("OEIL");
+    })
+    .reduce((sum, item) => sum + parseFloat(item.montantTotal || 0), 0);
+
+  const solde = plafondApplique - totalConsomme;
+
+  setResteDisponible(solde);
+  setIsBlocked(solde <= 0);
+};
   useEffect(() => {
     if (selectedUserFull) calculerReste(selectedUserFull, formData.prestation);
   }, [formData.prestation, history]);
@@ -350,7 +369,24 @@ const totalConsomme = history
       setIsBlocked(resteDisponible !== null && (montantSaisi > resteDisponible || resteDisponible <= 0));
     }
   };
+const [loadingPlafonds, setLoadingPlafonds] = useState(true);
 
+const fetchPlafonds = async () => {
+  setLoadingPlafonds(true);
+  try {
+    const res = await fetch("http://localhost:5001/api/settings");
+    if (res.ok) {
+      const settings = await res.json();
+      if (settings.plafond_general) setPlafondGeneral(Number(settings.plafond_general));
+      if (settings.plafond_dentaire) setPlafondDentaire(Number(settings.plafond_dentaire));
+      if (settings.plafond_ophta) setPlafondOphta(Number(settings.plafond_ophta));
+    }
+  } catch (err) {
+    console.error("Erreur chargement plafonds:", err);
+  } finally {
+    setLoadingPlafonds(false);
+  }
+};
   const fetchSuggestions = async (term) => {
     if (term.length > 1) {
       try {
@@ -413,7 +449,7 @@ const handleSave = async () => {
       // agentNom
       agentNom: formData.agentNom,
       // Clinique
-      sfEtablissement: parseInt(formData.sfEtablissement),
+      sfEtablissement: formData.sfEtablissement,
     };
  
     const response = await fetch("http://localhost:5001/api/prise-en-charge/", {
@@ -824,9 +860,20 @@ const annulerPrise = async (id) => {
                   <QRCodeSVG value={qrData} size={80} />
                   <div className="text-center min-w-[250px]">
                     <p className="font-bold italic mb-1 text-[11px]">La Clinique / Le Laboratoire</p>
-                    <select name="sfEtablissement" value={formData.sfEtablissement} onChange={handleChange} className="w-full text-center font-black text-red-700 bg-transparent border-b border-black outline-none uppercase">
-                      {cliniques.map((c) => (<option key={c.id} value={c.id}>{c.nom || c.nom_clinique}</option>))}
-                    </select>
+                    <select
+  name="sfEtablissement"
+  value={formData.sfEtablissement || ""}
+  onChange={handleChange}
+  className="w-full text-center font-black text-red-700 bg-transparent border-b border-black outline-none uppercase"
+>
+  <option value="">-- Choisir une clinique --</option>
+
+  {cliniques.map((c) => (
+    <option key={c.id} value={String(c.id)}>
+      {c.nom || c.nom_clinique}
+    </option>
+  ))}
+</select>
                   </div>
                 </div>
               </div>

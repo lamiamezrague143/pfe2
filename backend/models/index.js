@@ -1,6 +1,10 @@
-const sequelize = require("../config/db");
+const { sequelize } = require("../config/db");
 
-// ❌ SUPPRIMER (sequelize)
+
+
+
+
+
 // ✅ importer directement
 const User = require("./User");
 const Prise = require("./Prise");
@@ -8,6 +12,7 @@ const Clinique = require("./Clinique");
 const Dossier = require("./Dossier");
 const PieceDossier = require("./PieceDossier");
 const Prestation = require("./Prestation");
+const Setting = require('./Setting');
 
 // Relations
 User.hasMany(Prise, { foreignKey: "userId", as: "historique" });
@@ -31,5 +36,6 @@ module.exports = {
   Clinique,
   Dossier, 
   PieceDossier,
-  Prestation
+  Prestation,
+  Setting
 };
