@@ -2,9 +2,10 @@ const express = require('express');
 const router = express.Router();
 const { sequelize } = require('../config/db');
 
-// Models
 const Demande = require('../models/Demande');
-
+const Dossier = require('../models/Dossier'); 
+const PieceDossier = require('../models/PieceDossier'); 
+// ----------------------------------
 
 // Upload Cloudinary
 const { upload } = require('../config/cloudinary');
@@ -13,38 +14,26 @@ const { upload } = require('../config/cloudinary');
 // ─────────────────────────────
 // 1. AJOUT DEMANDE
 // ─────────────────────────────
+
 router.post('/ajouter', (req, res) => {
-  upload.array('pieces', 10)(req, res, async (err) => {
-    if (err) {
-      return res.status(500).json({
-        message: "Erreur upload",
-        error: err.message
-      });
-    }
+  // 1. On utilise bien 'ordonnance' ici (ce que tes logs confirment)
+  upload.array('ordonnance', 10)(req, res, async (err) => {
+    if (err) return res.status(500).json({ message: "Erreur upload", error: err.message });
 
     try {
-      const {
-        nom_beneficiaire,
-        type_prestation,
-        fonction,
-        sexe,
-        telephone,
-        date_naissance
-      } = req.body;
+      const { nom_beneficiaire, type_prestation, fonction, sexe, telephone, date_naissance } = req.body;
 
-      // Pièces (Cloudinary)
+      // 2. On prépare les données pour la colonne JSON 'pieces' de ta BDD
       let piecesData = [];
-
       if (req.files && req.files.length > 0) {
         piecesData = req.files.map(file => ({
           nom: file.originalname,
           type: file.mimetype,
-          data: file.path
+          data: file.path // L'URL Cloudinary (ex: https://res.cloudinary...)
         }));
       }
-console.log("BODY:", req.body);
-console.log("FILES:", req.files);
-      // ❌ IMPORTANT : on garde MAIS ça peut être supprimé plus tard
+
+      // 3. Création dans la base de données
       const nouvelleDemande = await Demande.create({
         nom_beneficiaire,
         type_prestation,
@@ -52,17 +41,15 @@ console.log("FILES:", req.files);
         sexe,
         telephone,
         date_naissance,
-        pieces: piecesData, // ⚠️ optionnel (à éviter si gros volume)
+        pieces: piecesData, // On enregistre le tableau d'objets ici
         statut: "En attente"
       });
 
       res.status(201).json(nouvelleDemande);
 
     } catch (err) {
-      res.status(500).json({
-        message: "Erreur enregistrement",
-        error: err.message
-      });
+      console.error("Erreur Sequelize:", err);
+      res.status(500).json({ message: "Erreur enregistrement BDD", error: err.message });
     }
   });
 });
@@ -152,22 +139,17 @@ router.get('/', async (req, res) => {
         'statut',
         'motif_refus',
         'message_admin',
-        'createdAt'
+        'createdAt',
+        'pieces' // ✅ RE-AJOUTE CE CHAMP ICI
       ],
       order: [['createdAt', 'DESC']],
       limit: 20
     });
-
     res.json(demandes);
-
   } catch (err) {
-    res.status(500).json({
-      message: "Erreur récupération",
-      error: err.message
-    });
+    res.status(500).json({ message: "Erreur récupération", error: err.message });
   }
 });
-
 
 // ─────────────────────────────
 // 4. RÉCUPÉRER UNE DEMANDE (AVEC pièces)
@@ -204,8 +186,11 @@ router.post('/rejeter/:id', async (req, res) => {
       return res.status(404).json({ message: "Introuvable" });
     }
 
-    demande.statut = "Rejetée";
-    demande.motif_refus = motif || "Dossier non conforme";
+    // On enregistre le motif dans message_admin pour l'unifier avec la validation
+    demande.message_admin = motif; 
+    
+    // Optionnel : garder aussi motif_refus si tu as une colonne dédiée
+    demande.motif_refus = motif;
 
     await demande.save();
 

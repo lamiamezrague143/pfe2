@@ -212,7 +212,6 @@ export default function FormulairePriseEnCharge() {
   const [plafondGeneral, setPlafondGeneral] = useState(130000);
 const [plafondDentaire, setPlafondDentaire] = useState(50000);
 const [plafondOphta, setPlafondOphta] = useState(50000);
-
   // Modal state
   const [selectedDemande, setSelectedDemande] = useState(null);
   const [showModal, setShowModal] = useState(false);
@@ -220,10 +219,14 @@ const [plafondOphta, setPlafondOphta] = useState(50000);
   const inputLine = "border-b border-dotted border-black bg-transparent outline-none focus:bg-blue-50 px-1 transition-colors";
   const selectStyle = "border-b border-dotted border-black bg-transparent outline-none cursor-pointer hover:bg-blue-50 transition-colors";
 
-const getLastDayOfMonth = () => {
-  const date = new Date();
-  const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0);
-  return lastDay.toISOString().split('T')[0]; 
+const getOneMonthLater = () => {
+  const today = new Date();
+  const nextMonth = new Date(today);
+  
+  nextMonth.setMonth(today.getMonth() + 1);
+
+  // Format YYYY-MM-DD
+  return nextMonth.toISOString().split("T")[0];
 };
 
   // ── Fetch demandes en ligne ──
@@ -405,10 +408,10 @@ const fetchPlafonds = async () => {
       fPrenom: user.prenomComplet,
       fFonction: user.position || user.role || "",
       fDateLieu: `${new Date(user.dateNaissance).toLocaleDateString()} à ${user.lieuNaissance}`,
-      pNom: user.nomComplet,
-      pPrenom: user.prenomComplet,
-      pDateLieu: `${new Date(user.dateNaissance).toLocaleDateString()} à ${user.lieuNaissance}`,
-      pLien: "Lui-même"
+       pNom: "",
+  pPrenom: "",
+  pDateLieu: "",
+  pLien: ""
     }));
     calculerReste(user, formData.prestation);
     if (user.photo) {
@@ -549,17 +552,49 @@ const annulerPrise = async (id) => {
     .tabs-nav { display: none !important; }
     .tab-en-ligne { display: none !important; }
     .tab-consulter { display: none !important; }
-    
     nav, header { display: none !important; }
-    
     select { display: none !important; }
-    .print-value { display: inline !important; }
-    
     @page { margin: 10mm; }
-  }
-  .print-value { display: none; }
-`}</style>
+    .print-field {
+      border-bottom: 2px solid black !important;
+    }
 
+    /* ✅ NOUVEAU : tirets pour les inputs à l'impression */
+    input[type="text"], input:not([type]) {
+      border: none !important;
+      border-bottom: 1.5px solid black !important;
+      background: transparent !important;
+      min-width: 100px;
+    }
+    input:not([type="radio"]):empty,
+    input[value=""] {
+      content: "___________________";
+    }
+
+    /* ✅ NOUVEAU : tirets pour les divs vides dans Service Fait */
+    .sf-line-empty {
+      border-bottom: 1.5px solid black !important;
+      min-width: 80px;
+      display: inline-block;
+    }
+    .sf-line-empty::after {
+      content: "";
+    }
+  }
+
+  .print-field {
+    display: inline-block;
+    min-width: 160px;
+    border-bottom: 1px dotted black;
+    padding: 2px 4px;
+    font-weight: bold;
+    text-transform: uppercase;
+  }
+  .print-field:empty::after {
+    content: "____________________";
+    letter-spacing: 2px;
+  }
+`}</style>
       {/* Modal de décision */}
       {showModal && (
         <DossierModal
@@ -717,9 +752,7 @@ const annulerPrise = async (id) => {
 
             <div>
               <span>Entrant dans le cadre de la convention médicale paraphée en date du </span>
-              <span className="font-bold border-b px-2">{formData.conventionStartDate || "___/___/_____"}</span>
-              <span> au </span>
-              <span className="font-bold border-b px-2">{getLastDayOfMonth()}</span>
+             <span className="font-bold border-b px-2">{getOneMonthLater()}</span>
             </div>
 
             {/* Fonctionnaire */}
@@ -766,28 +799,63 @@ const annulerPrise = async (id) => {
               <h3 className="font-bold underline text-[12px] uppercase">Le Patient :</h3>
               <div className="flex items-center gap-3">
                 <span className="font-bold text-red-800">Bénéficiaire :</span>
-                <select className={selectStyle} onChange={(e) => {
-                  const val = e.target.value;
-                  if (val === "self") {
-                    setFormData(p => ({ ...p, pNom: p.fNom, pPrenom: p.fPrenom, pDateLieu: p.fDateLieu, pLien: "Lui-même" }));
-                  } else if (selectedUserFull?.ayantDroits) {
-                    const ad = selectedUserFull.ayantDroits[val];
-                    setFormData(p => ({ ...p, pNom: ad.nom, pPrenom: ad.prenom, pDateLieu: `${new Date(ad.dateNaissance).toLocaleDateString()} à ${ad.lieuNaissance || ''}`, pLien: ad.lien }));
-                  }
-                }}>
-                  <option value="self">L'assuré lui-même</option>
-                  {selectedUserFull?.ayantDroits?.map((ad, i) => (
-                    <option key={i} value={i}>{ad.nom} {ad.prenom} ({ad.lien})</option>
-                  ))}
-                </select>
+<select className={selectStyle} onChange={(e) => {
+  const val = e.target.value;
+
+  if (val === "") {
+    setFormData(p => ({
+      ...p,
+      pNom: "",
+      pPrenom: "",
+      pDateLieu: "",
+      pLien: ""
+    }));
+  } 
+  else if (val === "self") {
+    setFormData(p => ({
+      ...p,
+      pNom: p.fNom,
+      pPrenom: p.fPrenom,
+      pDateLieu: p.fDateLieu,
+      pLien: "Lui-même"
+    }));
+  } 
+  else if (selectedUserFull?.ayantDroits) {
+    const ad = selectedUserFull.ayantDroits[val];
+    setFormData(p => ({
+      ...p,
+      pNom: ad.nom || "",
+      pPrenom: ad.prenom || "",
+      pDateLieu: ad.dateNaissance 
+        ? `${new Date(ad.dateNaissance).toLocaleDateString()} à ${ad.lieuNaissance || ''}`
+        : "",
+      pLien: ad.lien || ""
+    }));
+  }
+}}>
+  <option value="">-- Choisir un bénéficiaire --</option>
+  <option value="self">L'assuré lui-même</option>
+
+  {selectedUserFull?.ayantDroits?.map((ad, i) => (
+    <option key={i} value={i}>
+      {ad.nom} {ad.prenom} ({ad.lien})
+    </option>
+  ))}
+</select>
               </div>
               <div className="grid grid-cols-2 gap-4">
-                <div><span className="font-bold">Nom :</span> <span className="border-b inline-block w-40 font-bold uppercase">{formData.pNom}</span></div>
-                <div><span className="font-bold">Prénom :</span> <span className="border-b inline-block w-40 font-bold uppercase">{formData.pPrenom}</span></div>
+                <div><span className="font-bold">Nom :</span><span className="print-field">
+  {formData.pNom || ""}
+</span></div>
+                <div><span className="font-bold">Prénom :</span><span className="print-field">
+  {formData.pPrenom || ""}
+</span></div>
               </div>
               <div>
                 <span className="font-bold">Date et lieu de Naissance :</span>
-                <span className="border-b inline-block w-2/3">{formData.pDateLieu}</span>
+                <span className="print-field">
+  {formData.pDateLieu || ""}
+</span>
               </div>
             </div>
 
@@ -845,17 +913,18 @@ const annulerPrise = async (id) => {
                 
           </div>
             </div>
-            <div>
+            
+<div className="mt-10">
 
 
             {/* Service Fait */}
             <div>
               <h2 className="text-center font-bold text-lg underline uppercase">Service Fait</h2>
               <div className="space-y-4 mt-4">
-                <div className="flex gap-2"><span>Nom et Prénom du patient :</span> <div className="flex-1 border-b border-black font-bold uppercase"></div></div>
-                <div className="flex gap-2"><span>Date et lieu de Naissance :</span> <div className="flex-1 border-b border-black font-bold uppercase"></div></div>
-                <div className="flex gap-2"><span>Désignation de la prestation :</span> <div className="flex-1 border-b border-black"></div></div>
-                <div className="flex gap-2 font-bold"><span>Montant de la prestation "70%" :</span> <div className="flex-1 border-b border-black"></div> <span>DA</span></div>
+               <div className="flex gap-2"><span>Nom et Prénom du patient :</span> <div className="flex-1 border-b border-black font-bold uppercase sf-line-empty"></div></div>
+<div className="flex gap-2"><span>Date et lieu de Naissance :</span> <div className="flex-1 border-b border-black font-bold uppercase sf-line-empty"></div></div>
+<div className="flex gap-2"><span>Désignation de la prestation :</span> <div className="flex-1 border-b border-black sf-line-empty"></div></div>
+<div className="flex gap-2 font-bold"><span>Montant de la prestation "70%" :</span> <div className="flex-1 border-b border-black sf-line-empty"></div> <span>DA</span></div>
                 <div className="flex justify-between items-end pt-6">
                   <QRCodeSVG value={qrData} size={80} />
                   <div className="text-center min-w-[250px]">

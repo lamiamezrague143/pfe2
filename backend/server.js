@@ -63,6 +63,10 @@ const uploadDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadDir)) { fs.mkdirSync(uploadDir); } // Crée le dossier si absent
 app.use('/api/uploads', express.static(path.join(__dirname, 'uploads')));
 
+app.use('/uploads/ordonnances', express.static('uploads/ordonnances'));
+app.use('/uploads/photos', express.static('uploads/photos'));
+
+// Dans ton server.js côté Backend
 
 // ... (après tes middlewares comme app.use(cors()))
 
