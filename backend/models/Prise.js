@@ -67,6 +67,10 @@ annule: {
   type: DataTypes.BOOLEAN,
   defaultValue: false
 },
+agentNom: {
+  type: DataTypes.STRING,
+  allowNull: false
+}
 
 }, {
   tableName: "prises_en_charge",

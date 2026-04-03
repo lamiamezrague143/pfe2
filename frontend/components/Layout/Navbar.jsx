@@ -5,11 +5,12 @@ import {
   School, 
   LayoutDashboard, 
   FileCheck, 
-  Home 
+  Home
 } from "lucide-react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-
+import { MessageSquare } from "lucide-react";
+import { FileText } from "lucide-react";
 export default function Navbar() {
   const pathname = usePathname();
 
@@ -34,6 +35,18 @@ export default function Navbar() {
       path: "/priseEnCharge/AjoutEtab", 
       icon: School 
     },
+        
+    { 
+      name: "Message", 
+      path: "/priseEnCharge/message", 
+      icon: MessageSquare
+    },
+    {
+      name: "Note",
+      path: "/priseEnCharge/note", 
+      icon: FileText
+    }
+
   ];
 
   return (
