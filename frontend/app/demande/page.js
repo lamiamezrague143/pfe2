@@ -89,22 +89,39 @@ function FileUploadZone({ files, onChange }) {
 // ─── MODAL PIÈCES ─────────────────────────────────────────────────────────────
 function PiecesModal({ pieces, onClose }) {
   if (!pieces?.length) return null;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={onClose}>
       <div className="bg-white rounded-xl shadow-2xl p-6 max-w-sm w-full mx-4" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
-          <h3 className="font-bold text-gray-800 text-sm">Pièces jointes ({pieces.length})</h3>
-          <button onClick={onClose} className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-gray-100 text-gray-400"><X size={14} /></button>
+          <h3 className="font-bold text-gray-800 text-sm">Documents ({pieces.length})</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <X size={18} />
+          </button>
         </div>
-        <div className="space-y-2">
+        
+        <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
           {pieces.map((p, i) => (
-            <div key={i}>
-              {p?.type?.includes("image")
-                ? <img src={p.data} alt={p.nom} className="w-full rounded-lg object-cover max-h-48" />
-                : <a href={p?.data || "#"} download={p?.nom || "document"} className="flex items-center gap-2 text-sm bg-blue-50 text-blue-700 px-3 py-2 rounded-lg hover:bg-blue-100 transition">
-                    <Paperclip size={13} /> {p?.nom || "Fichier sans nom"}
-                  </a>
-              }
+            <div key={i} className="border border-gray-100 rounded-lg p-2 bg-gray-50">
+              {p.type?.includes("image") ? (
+                <div className="space-y-1">
+                  <p className="text-[10px] text-gray-400 truncate">{p.nom}</p>
+                  <img 
+                    src={p.data} 
+                    alt={p.nom} 
+                    className="w-full h-auto rounded-md shadow-sm object-cover max-h-48"
+                  />
+                </div>
+              ) : (
+                <a 
+                  href={p.data} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 text-xs text-blue-600 hover:underline p-2"
+                >
+                  <Paperclip size={14} /> {p.nom || "Voir le document"}
+                </a>
+              )}
             </div>
           ))}
         </div>
@@ -112,6 +129,7 @@ function PiecesModal({ pieces, onClose }) {
     </div>
   );
 }
+
 
 // ─── CHAT PANEL ───────────────────────────────────────────────────────────────
 // ✅ FIX 1 : "export default" retiré ici — un seul export default par fichier
@@ -330,7 +348,7 @@ export default function DemandePage() {
     fd.append("telephone", telephone);
     fd.append("date_naissance", dateNaiss);
     fd.append("captcha", userCaptcha);
-    fichiers.forEach((f) => fd.append("pieces", f));
+    fichiers.forEach((f) => fd.append("ordonnance", f));
     try {
       await axios.post(`${API_BASE}/demandes/ajouter`, fd);
       setSubmitMsg({ text: "✅ Dossier envoyé avec succès !", type: "success" });
@@ -531,7 +549,8 @@ export default function DemandePage() {
                     </thead>
                     <tbody className="divide-y divide-gray-100">
                       {demandes.map((d) => {
-                        const pieces    = d.piecesJointes || [];
+                        // ✅ NOUVEAU CODE (À corriger) :
+                        const pieces = d.pieces || [];
                         const isValidee = d.statut === "Validée";
                         const isRejetee = d.statut === "Rejetée";
                         return (
@@ -542,14 +561,34 @@ export default function DemandePage() {
                               <p className="text-xs text-gray-400 mt-0.5">{d.type_prestation}</p>
                               <p className="text-[10px] text-gray-300 mt-0.5">{new Date(d.createdAt).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" })}</p>
                             </td>
-                            <td className="px-4 py-3 max-w-[180px]">
-                              {(isValidee || isRejetee) ? (
-                                <div className={`text-xs rounded-lg px-3 py-2 ${isValidee ? "bg-emerald-50 text-emerald-800" : "bg-red-50 text-red-800"}`}>
-                                  <p className="font-bold mb-0.5">{isValidee ? "✅ Acceptée" : "❌ Refusée"}</p>
-                                  <p className="text-[11px] leading-snug">{d.message_admin || (isValidee ? "Rapprochez-vous de la structure." : "Contactez la structure pour plus d'infos.")}</p>
-                                </div>
-                              ) : <span className="text-xs text-gray-400 italic">En cours d'examen…</span>}
-                            </td>
+                            {/* --- CELLULE DÉCISION MISE À JOUR --- */}
+<td className="px-4 py-3 max-w-[200px]">
+  {d.statut !== "En attente" ? (
+    <div className={`text-xs rounded-lg px-3 py-2 ${
+      isValidee ? "bg-emerald-50 text-emerald-800 border border-emerald-100" 
+                : "bg-red-50 text-red-800 border border-red-100"
+    }`}>
+      <p className="font-bold mb-1">
+        {isValidee ? "✅ Acceptée" : "❌ Refusée"}
+      </p>
+      
+      {/* On affiche message_admin qu'il soit validé ou rejeté */}
+      {d.message_admin ? (
+        <p className="text-[11px] leading-relaxed italic">
+          "{d.message_admin}"
+        </p>
+      ) : (
+        <p className="text-[10px] opacity-60">
+          {isValidee ? "Rapprochez-vous de la structure." : "Aucun motif précisé."}
+        </p>
+      )}
+    </div>
+  ) : (
+    <span className="text-xs text-gray-400 italic flex items-center gap-1">
+      <Clock size={12} /> Examen en cours...
+    </span>
+  )}
+</td>
                             <td className="px-4 py-3 text-center">
                               {pieces.length > 0
                                 ? <button onClick={() => setSelectedPieces(pieces)} className="inline-flex items-center gap-1.5 text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200 px-3 py-1.5 rounded-full hover:bg-blue-100 transition">

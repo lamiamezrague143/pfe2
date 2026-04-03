@@ -107,7 +107,21 @@ router.get("/all", async (req, res) => {
     res.status(500).json({ message: "Erreur lors de la récupération" });
   }
 });
+// 4. GET AYANTS DROIT  ← ICI, avant DELETE et PUT
+// =========================
+router.get("/ayants-droit/:id", async (req, res) => {
+  try {
+    const user = await User.findByPk(req.params.id);
 
+    if (!user) {
+      return res.status(404).json({ message: "Utilisateur non trouvé" });
+    }
+
+    res.json(user.ayantDroits || []);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 // =========================
 // 4. DELETE USER
 // =========================
@@ -176,4 +190,5 @@ router.put("/:id", upload.single("photo"), async (req, res) => {
     res.status(500).json({ message: "Erreur technique", details: err.message });
   }
 });
+
 module.exports = router;
