@@ -1,7 +1,6 @@
 // models/Setting.js
 const { DataTypes } = require('sequelize');
-// ✅ CORRECTION : Utilise l'import destructuré comme dans ton config/db
-const { sequelize } = require('../config/db'); 
+const { sequelize } = require('../config/db');
 
 const Setting = sequelize.define('Setting', {
   key: {
@@ -10,12 +9,14 @@ const Setting = sequelize.define('Setting', {
     allowNull: false
   },
   value: {
-    type: DataTypes.STRING, 
-    allowNull: false
+    type: DataTypes.STRING,
+    allowNull: false,
+    defaultValue: '0'  // ✅ Ajouter une valeur par défaut
   }
 }, {
   tableName: 'settings',
-  timestamps: true
+  timestamps: true,
+  freezeTableName: true  // ✅ Évite les problèmes de nommage
 });
 
 module.exports = Setting;
