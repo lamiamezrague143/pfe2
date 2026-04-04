@@ -160,34 +160,46 @@ const addAyantDroit = () => {
   };
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
-    setStatus({ type: "loading", message: isEditing ? "Mise à jour..." : "Enregistrement..." });
+  e.preventDefault();
+  setStatus({ type: "loading", message: isEditing ? "Mise à jour..." : "Enregistrement..." });
 
-    try {
-      const dataToSend = new FormData();
-      Object.keys(formData).forEach(key => {
-        if (key !== 'photo') dataToSend.append(key, formData[key]);
-      });
-      if (formData.photo) dataToSend.append("photo", formData.photo);
-      dataToSend.append('ayantDroits', JSON.stringify(ayantDroits));
+  try {
+    const dataToSend = new FormData();
+    
+    Object.keys(formData).forEach(key => {
+      if (key !== 'photo') dataToSend.append(key, formData[key]);
+    });
+    if (formData.photo) dataToSend.append("photo", formData.photo);
 
-      const url = isEditing 
-        ? `http://localhost:5001/api/users/${editingId}` 
-        : "http://localhost:5001/api/users/register";
-      
-      const method = isEditing ? "PUT" : "POST";
-      const response = await fetch(url, { method, body: dataToSend });
+    // ✅ Ayants droit SANS les photos (File n'est pas sérialisable en JSON)
+    const ayantDroitsSansPhotos = ayantDroits.map(({ photo, ...rest }) => rest);
+    dataToSend.append('ayantDroits', JSON.stringify(ayantDroitsSansPhotos));
 
-      if (response.ok) {
-        setStatus({ type: "success", message: isEditing ? "Modifié avec succès !" : "Enregistré avec succès !" });
-        setTimeout(() => { resetForm(); setVueActive("liste"); }, 1500);
-      } else {
-        const errorData = await response.json();
-        setStatus({ type: "error", message: errorData.message || "Erreur." });
+    // ✅ Photos des ayants droit envoyées séparément
+    ayantDroits.forEach((ad, index) => {
+      if (ad.photo instanceof File) {
+        dataToSend.append(`ayantDroitPhoto_${index}`, ad.photo);
       }
-    } catch (err) { setStatus({ type: "error", message: "Erreur serveur réseau." }); }
-  };
+    });
 
+    const url = isEditing 
+      ? `http://localhost:5001/api/users/${editingId}` 
+      : "http://localhost:5001/api/users/register";
+    
+    const method = isEditing ? "PUT" : "POST";
+    const response = await fetch(url, { method, body: dataToSend });
+
+    if (response.ok) {
+      setStatus({ type: "success", message: isEditing ? "Modifié avec succès !" : "Enregistré avec succès !" });
+      setTimeout(() => { resetForm(); setVueActive("liste"); }, 1500);
+    } else {
+      const errorData = await response.json();
+      setStatus({ type: "error", message: errorData.message || "Erreur." });
+    }
+  } catch (err) { 
+    setStatus({ type: "error", message: "Erreur serveur réseau." }); 
+  }
+};
   return (
     <div className="max-w-6xl mx-auto p-4 md:p-10">
       
@@ -292,6 +304,15 @@ const addAyantDroit = () => {
         className="w-full p-3.5 bg-white border-none rounded-2xl shadow-sm focus:ring-2 focus:ring-green-100 outline-none transition-all text-gray-600" 
       />
     </div>
+    <div className="space-y-1">
+  <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Lieu de Naissance</label>
+  <input 
+    placeholder="Lieu de naissance" 
+    value={newAyantDroit.lieuNaissance} 
+    onChange={(e) => setNewAyantDroit({...newAyantDroit, lieuNaissance: e.target.value})} 
+    className="w-full p-3.5 bg-white border-none rounded-2xl shadow-sm focus:ring-2 focus:ring-green-100 outline-none transition-all" 
+  />
+</div>
 
     <div className="space-y-1">
       <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Lien de parenté</label>

@@ -9,67 +9,107 @@ const { Op, fn, col } = require("sequelize");
 // =========================
 // 1. REGISTER
 // =========================
-router.post("/register", upload.single("photo"), async (req, res) => {
+// ✅ upload.any() accepte photo + ayantDroitPhoto_0, ayantDroitPhoto_1...
+router.post("/register", upload.any(), async (req, res) => {
   try {
-    const photoUrl = req.file ? req.file.path : null;
+    const files = req.files;
 
-    // Destructuration des données
-    const { 
-      nomComplet, prenomComplet, dateNaissance, lieuNaissance, 
-      sexe, departement, numero, email, positionAdministrative,
-      categorieRole, ayantDroits 
-    } = req.body;
+    // Photo principale
+    const photoFile = files.find(f => f.fieldname === "photo");
+    const photoUrl = photoFile ? photoFile.path : null;
 
-    // Validation minimale pour éviter des erreurs SQL Null
+    // Parser les ayants droit
+    let parsedAyantDroits = [];
+    if (req.body.ayantDroits) {
+      try {
+        parsedAyantDroits = JSON.parse(req.body.ayantDroits);
+      } catch (e) { parsedAyantDroits = []; }
+    }
+
+    // ✅ Associer chaque photo Cloudinary à son ayant droit
+    const ayantDroitPhotos = files.filter(f => f.fieldname.startsWith("ayantDroitPhoto_"));
+    ayantDroitPhotos.forEach(file => {
+      const index = parseInt(file.fieldname.replace("ayantDroitPhoto_", ""));
+      if (parsedAyantDroits[index]) {
+        parsedAyantDroits[index].photo = file.path; // ✅ URL Cloudinary
+      }
+    });
+
+    const { nomComplet, prenomComplet, dateNaissance, lieuNaissance,
+            sexe, departement, numero, email, positionAdministrative, categorieRole } = req.body;
+
     if (!nomComplet || !email) {
       return res.status(400).json({ message: "Le nom et l'email sont obligatoires" });
     }
 
-    let parsedAyantDroits = [];
-    if (ayantDroits) {
-      try {
-        parsedAyantDroits = typeof ayantDroits === 'string' ? JSON.parse(ayantDroits) : ayantDroits;
-      } catch (e) {
-        console.error("Erreur de parsing ayantDroits:", e);
-        parsedAyantDroits = [];
-      }
-    }
-
     const salt = await bcrypt.genSalt(10);
-    // Mot de passe par défaut pour le PFE
     const hashedPassword = await bcrypt.hash("PFE2026", salt);
 
     const newUser = await User.create({
-      nomComplet,
-      prenomComplet,
-      dateNaissance, 
-      lieuNaissance,
-      sexe, 
-      departement, 
-      numero, 
-      email,
+      nomComplet, prenomComplet, dateNaissance, lieuNaissance,
+      sexe, departement, numero, email,
       password: hashedPassword,
       positionAdministrative: positionAdministrative || "En activité",
       categorieRole: categorieRole || "Enseignant",
       photo: photoUrl,
-      ayantDroits: parsedAyantDroits
+      ayantDroits: parsedAyantDroits // ✅ avec les URLs Cloudinary
     });
 
-    res.status(201).json({ 
-      message: "Enseignant enregistré avec succès !", 
-      user: newUser 
-    });
+    res.status(201).json({ message: "Enregistré avec succès !", user: newUser });
 
   } catch (err) {
-    // Si l'email existe déjà, Sequelize renverra une erreur spécifique
     if (err.name === 'SequelizeUniqueConstraintError') {
       return res.status(400).json({ message: "Cet email ou numéro est déjà utilisé." });
     }
-    console.error("Erreur d'enregistrement:", err);
-    res.status(500).json({ 
-      message: "Erreur serveur interne", 
-      error: err.message 
+    console.error("Erreur:", err);
+    res.status(500).json({ message: "Erreur serveur", error: err.message });
+  }
+});
+
+// ✅ Même correction pour PUT
+router.put("/:id", upload.any(), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const files = req.files;
+    const updateData = { ...req.body };
+
+    // Photo principale
+    const photoFile = files.find(f => f.fieldname === "photo");
+    if (photoFile) updateData.photo = photoFile.path;
+
+    // Parser les ayants droit
+    let parsedAyantDroits = [];
+    if (updateData.ayantDroits) {
+      try {
+        parsedAyantDroits = typeof updateData.ayantDroits === 'string'
+          ? JSON.parse(updateData.ayantDroits)
+          : updateData.ayantDroits;
+      } catch (e) { parsedAyantDroits = []; }
+    }
+
+    // ✅ Associer photos Cloudinary aux ayants droit
+    const ayantDroitPhotos = files.filter(f => f.fieldname.startsWith("ayantDroitPhoto_"));
+    ayantDroitPhotos.forEach(file => {
+      const index = parseInt(file.fieldname.replace("ayantDroitPhoto_", ""));
+      if (parsedAyantDroits[index]) {
+        parsedAyantDroits[index].photo = file.path;
+      }
     });
+
+    updateData.ayantDroits = parsedAyantDroits;
+
+    const [updated] = await User.update(updateData, { where: { id } });
+
+    if (updated) {
+      const userMisAJour = await User.findByPk(id);
+      return res.status(200).json({ message: "Succès !", user: userMisAJour });
+    }
+
+    res.status(404).json({ message: "Utilisateur non trouvé" });
+
+  } catch (err) {
+    console.error("ERREUR SERVEUR :", err);
+    res.status(500).json({ message: "Erreur technique", details: err.message });
   }
 });
 // =========================
@@ -148,47 +188,5 @@ router.delete("/:id", async (req, res) => {
 // =========================
 // 5. UPDATE USER (CORRIGÉ)
 // =========================
-router.put("/:id", upload.single("photo"), async (req, res) => {
-  try {
-    const { id } = req.params;
-    const updateData = { ...req.body };
-
-    // Si une nouvelle photo est téléchargée
-    if (req.file) {
-      updateData.photo = req.file.path;
-    }
-
-    // Gérer les ayant-droits sans faire planter le serveur
-    if (updateData.ayantDroits) {
-      try {
-        // On ne fait JSON.parse que si c'est du texte brut (String)
-        if (typeof updateData.ayantDroits === 'string') {
-          updateData.ayantDroits = JSON.parse(updateData.ayantDroits);
-        }
-      } catch (e) {
-        console.error("Problème avec le format des ayant-droits");
-        // En cas d'erreur, on garde ce qu'on a ou on met un tableau vide
-        updateData.ayantDroits = Array.isArray(updateData.ayantDroits) ? updateData.ayantDroits : [];
-      }
-    }
-
-    // Lancement de la mise à jour dans la base de données
-    const [updated] = await User.update(updateData, {
-      where: { id: id }
-    });
-
-    if (updated) {
-      const userMisAJour = await User.findByPk(id);
-      return res.status(200).json({ message: "Succès !", user: userMisAJour });
-    }
-
-    res.status(404).json({ message: "Utilisateur non trouvé" });
-
-  } catch (err) {
-    // ICI : Regarde ton terminal Node.js, l'erreur s'affichera précisément
-    console.error("ERREUR SERVEUR :", err); 
-    res.status(500).json({ message: "Erreur technique", details: err.message });
-  }
-});
 
 module.exports = router;
