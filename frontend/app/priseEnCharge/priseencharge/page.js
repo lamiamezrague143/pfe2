@@ -76,17 +76,22 @@ function DossierModal({ demande, onClose, onDecision }) {
             <p className="text-xs text-gray-400 uppercase font-bold mb-1">Statut actuel</p>
             <StatusBadge status={demande.statut} />
           </div>
-          {demande.pieces?.ordonnance && (
-            <div className="col-span-2">
-              <p className="text-xs text-gray-400 uppercase font-bold mb-2">Documents joints</p>
-              <button
-                onClick={() => window.open(`http://localhost:5001/uploads/ordonnances/${demande.pieces.ordonnance}`)}
-                className="flex items-center gap-2 bg-blue-50 text-blue-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-100 transition border border-blue-200"
-              >
-                📄 Voir l'ordonnance
-              </button>
-            </div>
-          )}
+{ordonnance && (
+  <div className="col-span-2">
+    <p className="text-xs text-gray-400 uppercase font-bold mb-2">
+      Documents joints
+    </p>
+
+    <button
+      onClick={() =>
+        window.open(`http://localhost:5001/uploads/ordonnances/${ordonnance}`)
+      }
+      className="flex items-center gap-2 bg-blue-50 text-blue-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-100 transition border border-blue-200"
+    >
+      📄 Voir l'ordonnance
+    </button>
+  </div>
+)}
         </div>
 
         {/* Zone de décision */}
