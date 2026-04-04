@@ -1,12 +1,11 @@
-"use client";
+"use client"; // ✅ Une seule fois, tout en haut !
+
 import React, { useState, useEffect, useRef } from "react";
 import { io } from "socket.io-client";
 import { Send, MessageSquare, User, Users, Search, Circle } from "lucide-react";
 
 const SOCKET_SERVER_URL = "http://localhost:5001";
 const ADMIN_ID = 999;
-
-
 
 // ─── UTILITAIRES ──────────────────────────────────────────────────────────────
 const formatTime = (ts) =>
@@ -20,79 +19,78 @@ const formatDate = (ts) => {
   return d.toLocaleDateString("fr-FR", { day: "2-digit", month: "short" });
 };
 
-// ─── PAGE ADMIN MESSAGERIE ────────────────────────────────────────────────────
 export default function AdminMessagesPage() {
-  const [conversations, setConversations] = useState([]); // liste des utilisateurs ayant écrit
-  const [selectedUser, setSelectedUser]   = useState(null);
-  const [messages, setMessages]           = useState([]);
-  const [input, setInput]                 = useState("");
-  const [search, setSearch]               = useState("");
-  const [loading, setLoading]             = useState(true);
-  const socketRef                         = useRef(null);
-  const scrollRef                         = useRef(null);
+  const [conversations, setConversations] = useState([]);
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState("");
+  const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(true);
+  
+  const socketRef = useRef(null);
+  const scrollRef = useRef(null);
+  // On utilise une ref pour selectedUser afin d'y accéder dans l'écouteur socket sans re-render
+  const selectedUserRef = useRef(null);
 
-useEffect(() => {
-  socketRef.current = io(SOCKET_SERVER_URL, { withCredentials: true });
+  useEffect(() => {
+    selectedUserRef.current = selectedUser;
+  }, [selectedUser]);
 
-  socketRef.current.on("receive_message", (msg) => {
-    setMessages((prev) => [...prev, msg]);
+  // ── Initialisation Socket et Fetch ──────────────────────────────────────────
+  useEffect(() => {
+  const socket = io(SOCKET_SERVER_URL, { withCredentials: true });
+  socketRef.current = socket;
 
-    setConversations((prev) => {
-      const exists = prev.find((c) => c.userId === msg.senderId);
+  // On crée une fonction isolée pour pouvoir la "débrancher" plus tard
+  const onMessageReceived = (msg) => {
+    const isRelevant = 
+      Number(msg.senderId) === Number(selectedUserRef.current?.userId) || 
+      Number(msg.receiverId) === Number(selectedUserRef.current?.userId);
 
-      if (exists) {
-        return prev.map((c) =>
-          c.userId === msg.senderId
-            ? {
-                ...c,
-                lastMessage: msg.content,
-                lastTime: msg.createdAt,
-                unread:
-                  selectedUser?.userId === msg.senderId
-                    ? 0
-                    : (c.unread || 0) + 1,
-              }
-            : c
-        );
-      }
+    if (isRelevant) {
+      setMessages((prev) => {
+        // Optionnel : Éviter les doublons par ID si le serveur renvoie l'ID
+        const exists = prev.find(m => m.id === msg.id);
+        if (exists && msg.id) return prev; 
+        return [...prev, msg];
+      });
+    }
+    // ... reste de ta logique de mise à jour des conversations
+  };
 
-      return [
-        {
-          userId: msg.senderId,
-          name: `Utilisateur #${msg.senderId}`,
-          lastMessage: msg.content,
-          lastTime: msg.createdAt,
-          unread: 1,
-        },
-        ...prev,
-      ];
-    });
-  });
+  socket.on("receive_message", onMessageReceived);
 
   fetchConversations();
 
-  return () => socketRef.current?.disconnect();
-}, []);
-
+  return () => {
+    // ✅ TRÈS IMPORTANT : On débranche tout ici
+    socket.off("receive_message", onMessageReceived);
+    socket.disconnect();
+  };
+}, []); // On garde le tableau vide pour que ça ne tourne qu'une fois
 
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // ── Chargement des conversations (sidebar) ──────────────────────────────────
   const fetchConversations = async () => {
     try {
       const res = await fetch(`${SOCKET_SERVER_URL}/api/messages`);
-      const ct  = res.headers.get("content-type");
-      if (!res.ok || !ct?.includes("application/json")) throw new Error();
+      if (!res.ok) throw new Error();
       const data = await res.json();
 
-      // Grouper par senderId pour avoir une conversation par utilisateur
       const map = {};
       data.forEach((msg) => {
         const uid = msg.senderId === ADMIN_ID ? msg.receiverId : msg.senderId;
-        if (!map[uid]) map[uid] = { userId: uid, name: `Utilisateur #${uid}`, lastMessage: msg.content, lastTime: msg.createdAt, unread: 0 };
-        else { map[uid].lastMessage = msg.content; map[uid].lastTime = msg.createdAt; }
+        if (!map[uid] || new Date(msg.createdAt) > new Date(map[uid].lastTime)) {
+          map[uid] = { 
+            userId: uid, 
+            name: `Utilisateur #${uid}`, 
+            lastMessage: msg.content, 
+            lastTime: msg.createdAt, 
+            unread: 0 
+          };
+        }
       });
 
       setConversations(Object.values(map).sort((a, b) => new Date(b.lastTime) - new Date(a.lastTime)));
@@ -103,41 +101,42 @@ useEffect(() => {
     }
   };
 
-  // ── Sélection d'un utilisateur → charge ses messages ───────────────────────
   const selectUser = async (conv) => {
     setSelectedUser(conv);
-    setInput("");
-    // Marquer comme lu
-    setConversations((prev) => prev.map((c) => c.userId === conv.userId ? { ...c, unread: 0 } : c));
+    setConversations(prev => prev.map(c => c.userId === conv.userId ? { ...c, unread: 0 } : c));
 
     try {
-      const res  = await fetch(`${SOCKET_SERVER_URL}/api/messages?userId=${conv.userId}`);
-      const ct   = res.headers.get("content-type");
-      if (!res.ok || !ct?.includes("application/json")) throw new Error();
+      const res = await fetch(`${SOCKET_SERVER_URL}/api/messages?userId=${conv.userId}`);
+      if (!res.ok) throw new Error();
       const data = await res.json();
       setMessages(Array.isArray(data) ? data : []);
     } catch (e) {
-      console.error("Erreur messages:", e);
       setMessages([]);
     }
   };
 
-  // ── Envoi d'une réponse ─────────────────────────────────────────────────────
-const sendReply = () => {
-  if (!input.trim() || !selectedUser || !socketRef.current) return;
+  const sendReply = () => {
+    if (!input.trim() || !selectedUser || !socketRef.current) return;
 
-  socketRef.current.emit("send_message", {
-    senderId: ADMIN_ID,
-    receiverId: selectedUser.userId,
-    content: input.trim(),
-  });
+    const newMsg = {
+      senderId: ADMIN_ID,
+      receiverId: selectedUser.userId,
+      content: input.trim(),
+      createdAt: new Date().toISOString()
+    };
 
-  setInput("");
-};
+    // On envoie au serveur
+    socketRef.current.emit("send_message", newMsg);
+    
+    // Optionnel : on l'ajoute direct à l'UI pour plus de fluidité
+    // setMessages((prev) => [...prev, newMsg]); 
+    
+    setInput("");
+  };
+
   const filteredConvs = conversations.filter((c) =>
     c.name.toLowerCase().includes(search.toLowerCase())
   );
-
   return (
     <div className="min-h-screen bg-gray-100 font-sans">
       {/* ── HEADER ── */}
@@ -263,10 +262,21 @@ const sendReply = () => {
                             : "bg-white border border-gray-200 text-gray-800 rounded-tl-none"
                         }`}>
                           <p className="leading-relaxed">{msg.content}</p>
+                          {msg.image && (
+    <img 
+      src={msg.image} 
+      alt="Attachement" 
+      className="mt-2 rounded-lg max-w-full h-auto border border-gray-100"
+      onError={(e) => e.target.style.display = 'none'} // Cache si l'image bug
+    />
+  )}
                           <span className={`text-[9px] mt-1 block ${isAdmin ? "text-green-200 text-right" : "text-gray-400"}`}>
                             {isAdmin ? "Vous (Admin)" : selectedUser.name} · {formatTime(msg.createdAt || msg.timestamp)}
                           </span>
+                          
                         </div>
+                        
+                        
                       </div>
                     );
                   })

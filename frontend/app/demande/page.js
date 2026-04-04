@@ -132,16 +132,16 @@ function PiecesModal({ pieces, onClose }) {
 
 
 // ─── CHAT PANEL ───────────────────────────────────────────────────────────────
-// ✅ FIX 1 : "export default" retiré ici — un seul export default par fichier
 function ChatPanel({ user }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(true);
-
+  const [image, setImage] = useState(null);
+  const fileInputRef = useRef(null);
   const socketRef = useRef(null);
   const scrollRef = useRef(null);
-
-  const currentUserId = user?.id; // ⚠️ important
+  const [preview, setPreview] = useState(null);
+  const currentUserId = user?.id;
 
   // 🔌 Connexion socket + historique
   useEffect(() => {
@@ -179,20 +179,32 @@ function ChatPanel({ user }) {
   }, [messages]);
 
   // 📤 Envoyer message
-  const sendMessage = () => {
-    if (!input.trim() || !socketRef.current || !currentUserId) return;
+  const sendMessage = async () => {
+    if (!input.trim() && !image) return;
 
-    const messageData = {
-      senderId: currentUserId,
-      receiverId: 2, // ⚠️ à adapter
-      content: input,
-    };
+    const formData = new FormData();
+    formData.append("senderId", currentUserId);
+    formData.append("receiverId", 2);
+    formData.append("content", input || "");
 
-    socketRef.current.emit("send_message", messageData);
+    if (image) {
+      formData.append("image", image);
+    }
 
-    setMessages((prev) => [...prev, messageData]); // affichage immédiat
+    try {
+      await axios.post(`${API_BASE}/messages`, formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
 
-    setInput("");
+      // ✅ CORRECTION : on ne fait plus socketRef.current.emit("send_message", ...)
+      // Le serveur broadcaste lui-même via socket → évite le double message
+
+      setInput("");
+      setPreview(null);
+      setImage(null);
+    } catch (err) {
+      console.error("Erreur envoi message:", err);
+    }
   };
 
   // ⏰ format heure
@@ -229,7 +241,6 @@ function ChatPanel({ user }) {
           </div>
         ) : (
           <>
-            {/* Message de bienvenue si vide */}
             {messages.length === 0 && (
               <div className="flex justify-start">
                 <div className="bg-white border border-gray-200 p-3 rounded-2xl rounded-tl-none shadow-sm max-w-[80%]">
@@ -240,11 +251,9 @@ function ChatPanel({ user }) {
             )}
 
             {messages.map((msg, i) => {
-              // ✅ FIX : comparison correcte (les deux en Number)
               const isMine = Number(msg.senderId) === Number(currentUserId);
               return (
                 <div key={msg.id || i} className={`flex ${isMine ? "justify-end" : "justify-start"}`}>
-                  {/* Avatar admin */}
                   {!isMine && (
                     <div className="w-7 h-7 rounded-full bg-green-100 flex items-center justify-center mr-2 shrink-0 self-end">
                       <User size={13} className="text-green-700" />
@@ -255,7 +264,19 @@ function ChatPanel({ user }) {
                       ? "bg-green-700 text-white rounded-tr-none"
                       : "bg-white border border-gray-200 text-gray-800 rounded-tl-none"
                   }`}>
-                    <p className="leading-relaxed">{msg.content}</p>
+                    {msg.content && (
+                      <p className="leading-relaxed">{msg.content}</p>
+                    )}
+                    {msg.image && (
+                      <div className="mt-2">
+                        <img
+                          src={msg.image}
+                          alt="image"
+                          className="rounded-lg max-w-full max-h-60 cursor-pointer"
+                          onClick={() => window.open(msg.image, "_blank")}
+                        />
+                      </div>
+                    )}
                     <span className={`text-[9px] mt-1 block ${isMine ? "text-green-200 text-right" : "text-gray-400"}`}>
                       {isMine ? "Vous" : "Support"} · {formatTime(msg.createdAt || msg.timestamp)}
                     </span>
@@ -280,11 +301,48 @@ function ChatPanel({ user }) {
         />
         <button
           onClick={sendMessage}
-          disabled={!input.trim()}
+          disabled={!input.trim() && !image}
           className="w-10 h-10 bg-green-700 text-white rounded-full flex items-center justify-center hover:bg-green-800 transition shadow-md disabled:opacity-40 disabled:cursor-not-allowed"
         >
           <Send size={15} />
         </button>
+        <input
+          type="file"
+          accept="image/*"
+          ref={fileInputRef}
+          onChange={(e) => {
+            const file = e.target.files[0];
+            setImage(file);
+            if (file) {
+              setPreview(URL.createObjectURL(file));
+            }
+          }}
+          className="hidden"
+        />
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center"
+        >
+          <Paperclip size={16} />
+        </button>
+        {preview && (
+          <div className="relative w-20 h-20 mb-2">
+            <img
+              src={preview}
+              alt="preview"
+              className="w-full h-full object-cover rounded-lg border"
+            />
+            <button
+              onClick={() => {
+                setPreview(null);
+                setImage(null);
+              }}
+              className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center text-xs"
+            >
+              <X size={12} />
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -308,7 +366,7 @@ export default function DemandePage() {
   const [fonction, setFonction]             = useState("");
   const [prestation, setPrestation]         = useState("");
   const [fichiers, setFichiers]             = useState([]);
-
+  
   const refreshCaptcha = async () => {
     try {
       const res = await fetch(`${API_BASE}/captcha`);
@@ -549,7 +607,6 @@ export default function DemandePage() {
                     </thead>
                     <tbody className="divide-y divide-gray-100">
                       {demandes.map((d) => {
-                        // ✅ NOUVEAU CODE (À corriger) :
                         const pieces = d.pieces || [];
                         const isValidee = d.statut === "Validée";
                         const isRejetee = d.statut === "Rejetée";
@@ -561,34 +618,31 @@ export default function DemandePage() {
                               <p className="text-xs text-gray-400 mt-0.5">{d.type_prestation}</p>
                               <p className="text-[10px] text-gray-300 mt-0.5">{new Date(d.createdAt).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" })}</p>
                             </td>
-                            {/* --- CELLULE DÉCISION MISE À JOUR --- */}
-<td className="px-4 py-3 max-w-[200px]">
-  {d.statut !== "En attente" ? (
-    <div className={`text-xs rounded-lg px-3 py-2 ${
-      isValidee ? "bg-emerald-50 text-emerald-800 border border-emerald-100" 
-                : "bg-red-50 text-red-800 border border-red-100"
-    }`}>
-      <p className="font-bold mb-1">
-        {isValidee ? "✅ Acceptée" : "❌ Refusée"}
-      </p>
-      
-      {/* On affiche message_admin qu'il soit validé ou rejeté */}
-      {d.message_admin ? (
-        <p className="text-[11px] leading-relaxed italic">
-          "{d.message_admin}"
-        </p>
-      ) : (
-        <p className="text-[10px] opacity-60">
-          {isValidee ? "Rapprochez-vous de la structure." : "Aucun motif précisé."}
-        </p>
-      )}
-    </div>
-  ) : (
-    <span className="text-xs text-gray-400 italic flex items-center gap-1">
-      <Clock size={12} /> Examen en cours...
-    </span>
-  )}
-</td>
+                            <td className="px-4 py-3 max-w-[200px]">
+                              {d.statut !== "En attente" ? (
+                                <div className={`text-xs rounded-lg px-3 py-2 ${
+                                  isValidee ? "bg-emerald-50 text-emerald-800 border border-emerald-100" 
+                                            : "bg-red-50 text-red-800 border border-red-100"
+                                }`}>
+                                  <p className="font-bold mb-1">
+                                    {isValidee ? "✅ Acceptée" : "❌ Refusée"}
+                                  </p>
+                                  {d.message_admin ? (
+                                    <p className="text-[11px] leading-relaxed italic">
+                                      "{d.message_admin}"
+                                    </p>
+                                  ) : (
+                                    <p className="text-[10px] opacity-60">
+                                      {isValidee ? "Rapprochez-vous de la structure." : "Aucun motif précisé."}
+                                    </p>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="text-xs text-gray-400 italic flex items-center gap-1">
+                                  <Clock size={12} /> Examen en cours...
+                                </span>
+                              )}
+                            </td>
                             <td className="px-4 py-3 text-center">
                               {pieces.length > 0
                                 ? <button onClick={() => setSelectedPieces(pieces)} className="inline-flex items-center gap-1.5 text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200 px-3 py-1.5 rounded-full hover:bg-blue-100 transition">
@@ -614,7 +668,6 @@ export default function DemandePage() {
         )}
 
         {/* ── MESSAGERIE ── */}
-        {/* ✅ FIX 2 : prop "user" passée à ChatPanel */}
         {activeTab === "chat" && <ChatPanel user={{ id: CURRENT_USER_ID }} />}
 
         {/* ── PROFIL ── */}

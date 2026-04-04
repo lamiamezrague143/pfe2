@@ -2,11 +2,9 @@ const { DataTypes } = require("sequelize");
 const { sequelize } = require("../config/db");
 
 const Dossier = sequelize.define('Dossier', {
-  num_sequence: {
-    type: DataTypes.STRING,
-    allowNull: false,
-    unique: true 
-  },
+num_sequence: {
+  type: DataTypes.STRING,
+},
   nom_beneficiaire: { 
     type: DataTypes.STRING, 
     allowNull: false 

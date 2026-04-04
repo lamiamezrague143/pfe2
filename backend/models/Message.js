@@ -29,6 +29,10 @@ const Message = sequelize.define("Message", {
     type: DataTypes.BOOLEAN,
     defaultValue: false,
   },
+  image: {
+  type: DataTypes.STRING,
+  allowNull: true,
+}
 }, {
   timestamps: true, // createdAt + updatedAt
 });
