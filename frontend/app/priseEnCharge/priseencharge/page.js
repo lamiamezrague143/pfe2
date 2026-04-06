@@ -76,20 +76,23 @@ function DossierModal({ demande, onClose, onDecision }) {
             <p className="text-xs text-gray-400 uppercase font-bold mb-1">Statut actuel</p>
             <StatusBadge status={demande.statut} />
           </div>
-{ordonnance && (
+{demande?.pieces && demande.pieces.length > 0 && (
   <div className="col-span-2">
     <p className="text-xs text-gray-400 uppercase font-bold mb-2">
       Documents joints
     </p>
 
-    <button
-      onClick={() =>
-        window.open(`http://localhost:5001/uploads/ordonnances/${ordonnance}`)
-      }
-      className="flex items-center gap-2 bg-blue-50 text-blue-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-100 transition border border-blue-200"
-    >
-      📄 Voir l'ordonnance
-    </button>
+    <div className="flex flex-wrap gap-3">
+      {demande.pieces.map((file, index) => (
+        <button
+          key={index}
+          onClick={() => window.open(file.data)}
+          className="flex items-center gap-2 bg-blue-50 text-blue-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-100 transition border border-blue-200"
+        >
+          📄 {file.nom || "Document"}
+        </button>
+      ))}
+    </div>
   </div>
 )}
         </div>
@@ -237,7 +240,9 @@ const getOneMonthLater = () => {
   // ── Fetch demandes en ligne ──
   const fetchDemandesEnLigne = async () => {
     try {
-      const res = await axios.get("http://localhost:5001/api/demandes");
+     const res = await axios.get(
+  "http://localhost:5001/api/demandes?limit=20&offset=0"
+);
       setDemandesEnLigne(res.data);
     } catch (err) { console.error("Erreur chargement demandes:", err); }
   };
@@ -493,7 +498,10 @@ const handleSave = async () => {
     setSelectedDemande(demande);
     setShowModal(true);
   };
-
+function getLastDayOfMonth(date) {
+  const d = new Date(date);
+  return new Date(d.getFullYear(), d.getMonth() + 1, 0);
+}
   // ── Exécuter la décision (valider / rejeter) ──
 const executerDecision = async (id, action, motif, messageClient) => {
   try {
@@ -502,8 +510,8 @@ const executerDecision = async (id, action, motif, messageClient) => {
       : `http://localhost:5001/api/demandes/rejeter/${id}`;
 
     const body = action === "valider"
-      ? { message_client: messageClient }
-      : { motif_refus: motif, message_client: messageClient };
+  ? { message_client: messageClient }
+  : { motif: motif, message_client: messageClient };
 
     console.log("➡️ Appel API :", endpoint, body);
 
