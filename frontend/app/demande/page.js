@@ -385,7 +385,8 @@ export default function DemandePage() {
 
   const fetchDemandes = async () => {
     setFetchLoading(true);
-    try { const r = await axios.get(`${API_BASE}/demandes`); setDemandes(r.data); }
+    try { const r = await axios.get(`${API_BASE}/demandes`); setDemandes(r.data);
+    console.log("API_BASE =", API_BASE); }
     catch (e) { console.error(e); }
     finally { setFetchLoading(false); }
   };
@@ -607,7 +608,18 @@ export default function DemandePage() {
                     </thead>
                     <tbody className="divide-y divide-gray-100">
                       {demandes.map((d) => {
-                        const pieces = d.pieces || [];
+                       let pieces = [];
+
+try {
+  if (d.pieces) {
+    pieces = typeof d.pieces === "string"
+      ? JSON.parse(d.pieces)
+      : d.pieces;
+  }
+} catch (e) {
+  console.error("Erreur parsing pieces", e);
+  pieces = [];
+}
                         const isValidee = d.statut === "Validée";
                         const isRejetee = d.statut === "Rejetée";
                         return (

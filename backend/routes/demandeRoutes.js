@@ -5,6 +5,7 @@ const { sequelize } = require('../config/db');
 const Demande = require('../models/Demande');
 const Dossier = require('../models/Dossier'); 
 const PieceDossier = require('../models/PieceDossier'); 
+const Prise = require('../models/Prise');
 // ----------------------------------
 
 // Upload Cloudinary
@@ -14,47 +15,45 @@ const { upload } = require('../config/cloudinary');
 // ─────────────────────────────
 // 1. AJOUT DEMANDE
 // ─────────────────────────────
+router.post('/ajouter', upload.array('ordonnance', 10), async (req, res) => {
+  try {
+    const { nom_beneficiaire, type_prestation, fonction, sexe, telephone, date_naissance } = req.body;
 
-router.post('/ajouter', (req, res) => {
-  // 1. On utilise bien 'ordonnance' ici (ce que tes logs confirment)
-  upload.array('ordonnance', 10)(req, res, async (err) => {
-    if (err) return res.status(500).json({ message: "Erreur upload", error: err.message });
+    console.log("BODY:", req.body);
+    console.log("FILES:", req.files);
 
-    try {
-      const { nom_beneficiaire, type_prestation, fonction, sexe, telephone, date_naissance } = req.body;
+    let piecesData = [];
 
-      // 2. On prépare les données pour la colonne JSON 'pieces' de ta BDD
-      let piecesData = [];
-      if (req.files && req.files.length > 0) {
-        piecesData = req.files.map(file => ({
-          nom: file.originalname,
-          type: file.mimetype,
-          data: file.path // L'URL Cloudinary (ex: https://res.cloudinary...)
-        }));
-      }
-
-      // 3. Création dans la base de données
-      const nouvelleDemande = await Demande.create({
-        nom_beneficiaire,
-        type_prestation,
-        fonction,
-        sexe,
-        telephone,
-        date_naissance,
-        pieces: piecesData, // On enregistre le tableau d'objets ici
-        statut: "En attente"
-      });
-
-      res.status(201).json(nouvelleDemande);
-
-    } catch (err) {
-      console.error("Erreur Sequelize:", err);
-      res.status(500).json({ message: "Erreur enregistrement BDD", error: err.message });
+    if (req.files && req.files.length > 0) {
+      piecesData = req.files.map(file => ({
+        nom: file.originalname,
+        type: file.mimetype,
+        data: file.path
+      }));
     }
-  });
+
+const nouvelleDemande = await Demande.create({
+  userId: 1, // ⚠️ remplace par l'utilisateur connecté
+  nom_beneficiaire,
+  type_prestation,
+  fonction,
+  sexe,
+  telephone,
+  date_naissance,
+  pieces: piecesData,
+  statut: "En attente"
 });
+    res.status(201).json(nouvelleDemande);
 
+  } catch (err) {
+    console.error("❌ ERREUR:", err);
 
+    res.status(500).json({
+      message: "Erreur enregistrement BDD",
+      error: err.message
+    });
+  }
+});
 // ─────────────────────────────
 // 2. VALIDER DEMANDE
 // ─────────────────────────────
@@ -84,16 +83,31 @@ router.post('/valider/:id', async (req, res) => {
       fonction: demande.fonction
     }, { transaction: t });
 
-    // Transfert pièces
-    const pieces = Array.isArray(demande.pieces) ? demande.pieces : [];
+    // ✅ Gestion SAFE de pieces (IMPORTANT)
+    let pieces = [];
 
-    const formattedPieces = pieces.map(p => ({
-      nom: p.nom,
-      type: p.type || 'image/png',
-      donnees: p.data,
-      dossierId: dossier.id
-    }));
+    try {
+      if (typeof demande.pieces === "string") {
+        pieces = JSON.parse(demande.pieces);
+      } else if (Array.isArray(demande.pieces)) {
+        pieces = demande.pieces;
+      }
+    } catch (e) {
+      console.error("❌ Erreur parsing pieces:", e);
+      pieces = [];
+    }
 
+    // Transformation sécurisée
+    const formattedPieces = pieces
+      .filter(p => p && p.nom && p.data)
+      .map(p => ({
+        nom: p.nom,
+        type: p.type || 'image/png',
+        donnees: p.data,
+        dossierId: dossier.id
+      }));
+
+    // Insertion en base
     if (formattedPieces.length > 0) {
       await PieceDossier.bulkCreate(formattedPieces, { transaction: t });
     }
@@ -104,7 +118,7 @@ router.post('/valider/:id', async (req, res) => {
 
     await t.commit();
 
-    res.json({
+    return res.json({
       message: "Demande validée",
       dossier
     });
@@ -112,7 +126,9 @@ router.post('/valider/:id', async (req, res) => {
   } catch (err) {
     await t.rollback();
 
-    res.status(500).json({
+    console.error("🔥 ERREUR VALIDER:", err);
+
+    return res.status(500).json({
       message: "Erreur serveur",
       error: err.message
     });
@@ -127,8 +143,12 @@ router.post('/valider/:id', async (req, res) => {
 → évite l’erreur mémoire MySQL
 */
 // ─────────────────────────────
+
 router.get('/', async (req, res) => {
   try {
+    const limit = parseInt(req.query.limit) || 20;
+    const offset = parseInt(req.query.offset) || 0;
+
     const demandes = await Demande.findAll({
       attributes: [
         'id',
@@ -137,20 +157,24 @@ router.get('/', async (req, res) => {
         'telephone',
         'type_prestation',
         'statut',
-        'motif_refus',
-        'message_admin',
         'createdAt',
-        'pieces' // ✅ RE-AJOUTE CE CHAMP ICI
+        'pieces',
+        [sequelize.literal('JSON_LENGTH(pieces)'), 'nb_pieces']
       ],
       order: [['createdAt', 'DESC']],
-      limit: 20
+      limit,
+      offset
     });
+
     res.json(demandes);
+
   } catch (err) {
-    res.status(500).json({ message: "Erreur récupération", error: err.message });
+    res.status(500).json({
+      message: "Erreur récupération",
+      error: err.message
+    });
   }
 });
-
 // ─────────────────────────────
 // 4. RÉCUPÉRER UNE DEMANDE (AVEC pièces)
 // ─────────────────────────────
@@ -180,30 +204,38 @@ router.post('/rejeter/:id', async (req, res) => {
   try {
     const { motif } = req.body;
 
+    if (!motif || motif.trim() === "") {
+      return res.status(400).json({
+        message: "Le motif est obligatoire"
+      });
+    }
+
     const demande = await Demande.findByPk(req.params.id);
 
     if (!demande) {
-      return res.status(404).json({ message: "Introuvable" });
+      return res.status(404).json({ message: "Demande introuvable" });
     }
 
-    // On enregistre le motif dans message_admin pour l'unifier avec la validation
-    demande.message_admin = motif; 
-    
-    // Optionnel : garder aussi motif_refus si tu as une colonne dédiée
+    // Mise à jour propre
+    demande.message_admin = motif;
     demande.motif_refus = motif;
+    demande.statut = "Rejetée";
 
     await demande.save();
 
-    res.json({ message: "Demande rejetée" });
+    return res.json({
+      message: "Demande rejetée avec succès"
+    });
 
   } catch (err) {
-    res.status(500).json({
+    console.error("🔥 ERREUR REJET:", err);
+
+    return res.status(500).json({
       message: "Erreur serveur",
       error: err.message
     });
   }
 });
-
 router.post('/submit-dossier', async (req, res) => {
   try {
     const { captchaInput, pNom, pPrenom, fonction, type_prestation, montantTotal } = req.body;
@@ -223,14 +255,20 @@ router.post('/submit-dossier', async (req, res) => {
     req.session.captcha = null;
 
     // Création de la demande dans MySQL via Sequelize
-    const nouvelleDemande = await PriseEnCharge.create({
-      pNom,
-      pPrenom,
-      fonction,
-      type_prestation,
-      montantTotal,
-      statut: 'En attente'
-    });
+    const nouvelleDemande = await Prise.create({
+      
+  ref: "REF-" + Date.now(),
+  sfEtablissement: 1, // à adapter
+  agentNom: "Admin",  // ou req.user.nom
+
+  pNom,
+  pPrenom,
+  fonction,
+  type_prestation,
+  montantTotal,
+  statut: 'Active'
+});
+    
 
     res.status(201).json({
       success: true,

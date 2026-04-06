@@ -2,6 +2,10 @@ const { DataTypes } = require("sequelize");
 const { sequelize } = require("../config/db");
 /////////////// demande client 
 const Demande = sequelize.define('Demande', {
+    userId: {
+  type: DataTypes.INTEGER,
+  allowNull: false
+},
   nom_beneficiaire: { type: DataTypes.STRING, allowNull: false },
   sexe: { type: DataTypes.STRING }, // Ajouté
   telephone: { type: DataTypes.STRING }, // Ajouté

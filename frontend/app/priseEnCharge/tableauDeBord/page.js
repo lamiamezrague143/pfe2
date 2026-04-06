@@ -235,8 +235,10 @@ const dataStatsBar = Object.keys(statsPrestations)
 const COLORS_BAR = ['#064e3b', '#059669', '#10b981', '#34d399', '#6ee7b7'];
 const clientsRegroupes = history.reduce((acc, curr) => {
   // On récupère le nom du patient (pNom + pPrenom)
-  const clientKey = `${curr.pNom || ''} ${curr.pPrenom || ''}`.toUpperCase().trim() || "INCONNU";
-  
+  const clientKey =
+  `${curr.pNom || curr.fNom || ''} ${curr.pPrenom || curr.fPrenom || ''}`
+    .toUpperCase()
+    .trim() || "INCONNU";
   // On utilise montantTotal car c'est ce qui est défini dans ton modèle
   const montant = parseFloat(curr.montantTotal || 0);
   const titrePrest = curr.type_prestation || curr.prestation || "Sans titre";
