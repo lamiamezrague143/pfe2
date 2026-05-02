@@ -3,16 +3,14 @@ const router = express.Router();
 const { Dossier, PieceDossier } = require('../models');
 const { sequelize } = require('../config/db');
 const { Op } = require('sequelize');
+const auth = require("../middleware/authMiddleware"); // 🔐 IMPORTANT
 
-// ✅ AJOUTER DOSSIER
-router.post('/ajouter', async (req, res) => {
+// ✅ AJOUTER DOSSIER (président + secrétariat)
+router.post('/ajouter', auth(["president", "secretariat"]), async (req, res) => {
   const t = await sequelize.transaction();
+
   try {
     const { nom_beneficiaire, type_prestation, fonction, pieces_deposees, montant_avenant } = req.body;
-
-    if (!nom_beneficiaire || !type_prestation) {
-      return res.status(400).json({ message: "Nom et type de prestation obligatoires" });
-    }
 
     const count = await Dossier.count();
     const num_sequence = `${new Date().getFullYear()}-${(count + 1).toString().padStart(3, '0')}`;
@@ -24,15 +22,17 @@ router.post('/ajouter', async (req, res) => {
       fonction,
       montant_avenant: montant_avenant ? parseFloat(montant_avenant) : 0,
     }, { transaction: t });
-// Par ce bloc corrigé :
-if (Array.isArray(pieces_deposees) && pieces_deposees.length > 0) {
-  const pieces = pieces_deposees.map(nom => ({
-    nom,
-    dossierId: dossier.id,
-    prestationId: req.body.prestationId || 1 // ⚠️ Met la prestation associée ici
-  }));
-  await PieceDossier.bulkCreate(pieces, { transaction: t });
-}
+
+    if (Array.isArray(pieces_deposees) && pieces_deposees.length > 0) {
+      const pieces = pieces_deposees.map(nom => ({
+        nom,
+        dossierId: dossier.id,
+        prestationId: req.body.prestationId || 1
+      }));
+
+      await PieceDossier.bulkCreate(pieces, { transaction: t });
+    }
+
     await t.commit();
 
     const dossierComplet = await Dossier.findByPk(dossier.id, {
@@ -40,24 +40,25 @@ if (Array.isArray(pieces_deposees) && pieces_deposees.length > 0) {
     });
 
     res.status(201).json(dossierComplet);
-  } catch (err) {
-  console.error("❌ FULL ERROR:", err);
 
-  return res.status(500).json({
-    message: err.message,
-    stack: err.stack,
-    errors: err.errors
-  });
+  } catch (err) {
+    await t.rollback();
+
+    res.status(500).json({
+      message: err.message,
+      stack: err.stack,
+      errors: err.errors
+    });
   }
 });
 
-// ✅ LISTE GÉNÉRALE
-router.get('/liste-generale', async (req, res) => {
+// ✅ LISTE GÉNÉRALE (président + secrétariat)
+router.get('/liste-generale', auth(["president", "secretariat"]), async (req, res) => {
   try {
     const { debut, fin } = req.query;
+
     let queryOptions = {
       order: [['createdAt', 'DESC']],
-      // ✅ RENOMMÉ : as: 'piecesJointes'
       include: [{ model: PieceDossier, as: 'piecesJointes' }]
     };
 
@@ -69,13 +70,14 @@ router.get('/liste-generale', async (req, res) => {
 
     const dossiers = await Dossier.findAll(queryOptions);
     res.json(dossiers);
+
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// ✅ SUPPRIMER DOSSIER
-router.delete('/:id', async (req, res) => {
+// ✅ SUPPRIMER (président + secrétariat)
+router.delete('/:id', auth(["president", "secretariat"]), async (req, res) => {
   try {
     await Dossier.destroy({ where: { id: req.params.id } });
     res.json({ message: "Dossier supprimé" });

@@ -5,22 +5,29 @@ const Prise = require("../models/Prise");
 const bcrypt = require("bcryptjs");
 const { upload } = require("../config/cloudinary");
 const { Op, fn, col } = require("sequelize");
-
+const authMiddleware = require("../middleware/authMiddleware");
 // =========================
 // 1. REGISTER
 // =========================
-router.post("/register", upload.single("photo"), async (req, res) => {
+router.post("/register", authMiddleware(["president"]), upload.single("photo"), async (req, res) => {
   try {
     const photoUrl = req.file ? req.file.path : null;
 
-    // Destructuration des données
-    const { 
-      nomComplet, prenomComplet, dateNaissance, lieuNaissance, 
-      sexe, departement, numero, email, positionAdministrative,
-      categorieRole, ayantDroits 
-    } = req.body;
+    const {
+  nomComplet,
+  prenomComplet,
+  dateNaissance,
+  lieuNaissance,
+  sexe,
+  departement,
+  numero,
+  email,
+  positionAdministrative,
+  categorieRole,
+  ayantDroits,
+  roleSystem
+} = req.body;
 
-    // Validation minimale pour éviter des erreurs SQL Null
     if (!nomComplet || !email) {
       return res.status(400).json({ message: "Le nom et l'email sont obligatoires" });
     }
@@ -28,47 +35,49 @@ router.post("/register", upload.single("photo"), async (req, res) => {
     let parsedAyantDroits = [];
     if (ayantDroits) {
       try {
-        parsedAyantDroits = typeof ayantDroits === 'string' ? JSON.parse(ayantDroits) : ayantDroits;
-      } catch (e) {
-        console.error("Erreur de parsing ayantDroits:", e);
+        parsedAyantDroits =
+          typeof ayantDroits === "string"
+            ? JSON.parse(ayantDroits)
+            : ayantDroits;
+      } catch {
         parsedAyantDroits = [];
       }
     }
 
+    // 🔐 HASH PASSWORD (CORRIGÉ)
     const salt = await bcrypt.genSalt(10);
-    // Mot de passe par défaut pour le PFE
     const hashedPassword = await bcrypt.hash("PFE2026", salt);
 
     const newUser = await User.create({
       nomComplet,
       prenomComplet,
-      dateNaissance, 
+      dateNaissance,
       lieuNaissance,
-      sexe, 
-      departement, 
-      numero, 
+      sexe,
+      departement,
+      numero,
       email,
       password: hashedPassword,
       positionAdministrative: positionAdministrative || "En activité",
       categorieRole: categorieRole || "Enseignant",
       photo: photoUrl,
-      ayantDroits: parsedAyantDroits
+      ayantDroits: parsedAyantDroits,
+
+      // 🔥 IMPORTANT POUR TON SYSTEME
+      roleSystem: roleSystem || "beneficiaire",
+      firstLogin: true
     });
 
-    res.status(201).json({ 
-      message: "Enseignant enregistré avec succès !", 
-      user: newUser 
+    res.status(201).json({
+      message: "Utilisateur créé avec succès",
+      user: newUser
     });
 
   } catch (err) {
-    // Si l'email existe déjà, Sequelize renverra une erreur spécifique
-    if (err.name === 'SequelizeUniqueConstraintError') {
-      return res.status(400).json({ message: "Cet email ou numéro est déjà utilisé." });
-    }
-    console.error("Erreur d'enregistrement:", err);
-    res.status(500).json({ 
-      message: "Erreur serveur interne", 
-      error: err.message 
+    console.error(err);
+    res.status(500).json({
+      message: "Erreur serveur",
+      error: err.message
     });
   }
 });
@@ -98,7 +107,7 @@ router.get("/search", async (req, res) => {
 // =========================
 // 3. GET ALL
 // =========================
-router.get("/all", async (req, res) => {
+router.get("/all", authMiddleware(["agent", "president", "ingenieur"]), async (req, res) => {
   try {
     const users = await User.findAll();
     res.status(200).json(users);
@@ -125,7 +134,7 @@ router.get("/ayants-droit/:id", async (req, res) => {
 // =========================
 // 4. DELETE USER
 // =========================
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", authMiddleware(["president","agent"]), async (req, res) => {
   try {
     const result = await User.destroy({
       where: { id: req.params.id }
@@ -148,7 +157,7 @@ router.delete("/:id", async (req, res) => {
 // =========================
 // 5. UPDATE USER (CORRIGÉ)
 // =========================
-router.put("/:id", upload.single("photo"), async (req, res) => {
+router.put("/:id", authMiddleware(["president", "agent"]), upload.single("photo"), async (req, res) => {
   try {
     const { id } = req.params;
     const updateData = { ...req.body };
@@ -190,5 +199,56 @@ router.put("/:id", upload.single("photo"), async (req, res) => {
     res.status(500).json({ message: "Erreur technique", details: err.message });
   }
 });
+router.post("/change-password", authMiddleware(["president", "agent", "ingenieur", "beneficiaire"]), async (req, res) => {
+  try {
+    if (!req.body) {
+      return res.status(400).json({ message: "Body manquant (express.json absent ?)" });
+    }
 
+    const { oldPassword, newPassword } = req.body;
+
+    if (!oldPassword || !newPassword) {
+      return res.status(400).json({ message: "Champs manquants" });
+    }
+
+    const user = await User.findByPk(req.user.id);
+
+    if (!user) {
+      return res.status(404).json({ message: "Utilisateur introuvable" });
+    }
+
+    const isMatch = await bcrypt.compare(oldPassword, user.password);
+
+    if (!isMatch) {
+      return res.status(400).json({ message: "Ancien mot de passe incorrect" });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    user.password = await bcrypt.hash(newPassword, salt);
+    user.firstLogin = false;
+
+    await user.save();
+
+    res.json({ message: "Mot de passe modifié avec succès" });
+
+  } catch (err) {
+    console.error("ERROR CHANGE PASSWORD:", err);
+    res.status(500).json({ message: "Erreur serveur", error: err.message });
+  }
+});
+router.get("/me", authMiddleware(["agent", "president", "ingenieur", "beneficiaire"]), async (req, res) => {
+  try {
+    const user = await User.findByPk(req.user.id, {
+    attributes: ["id", "nomComplet", "email", "roleSystem"]
+  });
+    if (!user) {
+      return res.status(404).json({ message: "Utilisateur non trouvé" });
+    }
+
+    res.json(user);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Erreur serveur" });
+  }
+});
 module.exports = router;

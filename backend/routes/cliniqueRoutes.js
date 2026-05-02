@@ -1,26 +1,23 @@
 const express = require("express");
 const router = express.Router();
 const { sequelize } = require("../config/db");
+const auth = require("../middleware/authMiddleware"); // 🔐 IMPORTANT
 
-// --- AJOUTER CONVENTION ---
-router.post("/register", async (req, res) => {
+// --- AJOUTER CONVENTION (agent seulement)
+router.post("/register", auth(["agent", "president"]), async (req, res) => {
   const { nom, type, adresse, telephone, email, services } = req.body;
 
   try {
-    // Récupérer le compte pour le numéro de séquence
     const [rows] = await sequelize.query("SELECT COUNT(*) as total FROM clinics");
     const count = rows[0].total;
 
-    // Génération du numéro (Ex: CPFE-001)
     const prefix = nom.substring(0, 3).toUpperCase();
     const typeCode = type.substring(0, 1).toUpperCase();
     const numeroSequence = `${typeCode}${prefix}-${(count + 1).toString().padStart(3, '0')}`;
 
-    // 🔥 CRUCIAL : On transforme les tableaux en chaînes JSON pour MySQL
     const telephoneJSON = JSON.stringify(telephone || []);
     const servicesJSON = JSON.stringify(services || []);
 
-    // Insertion (8 colonnes -> 8 valeurs)
     await sequelize.query(
       `INSERT INTO clinics 
       (nom, numeroSequence, type, adresse, telephone, email, services, dateAjout) 
@@ -31,9 +28,9 @@ router.post("/register", async (req, res) => {
           numeroSequence,
           type,
           adresse,
-          telephoneJSON, // Utilisation de la version JSON
+          telephoneJSON,
           email,
-          servicesJSON,  // Utilisation de la version JSON
+          servicesJSON,
         ]
       }
     );
@@ -49,12 +46,11 @@ router.post("/register", async (req, res) => {
   }
 });
 
-// --- RÉCUPÉRER TOUTES LES CONVENTIONS ---
-router.get("/all", async (req, res) => {
+// --- RÉCUPÉRER TOUTES LES CONVENTIONS (agent seulement)
+router.get("/all", auth(["agent"]), async (req, res) => {
   try {
     const [rows] = await sequelize.query("SELECT * FROM clinics ORDER BY dateAjout DESC");
 
-    // On s'assure que le frontend reçoit des objets JS propres
     const formattedClinics = rows.map(clinic => ({
       ...clinic,
       services: typeof clinic.services === 'string' ? JSON.parse(clinic.services) : clinic.services,
@@ -68,24 +64,25 @@ router.get("/all", async (req, res) => {
   }
 });
 
-// --- SUPPRIMER UNE CONVENTION ---
-router.delete("/:id", async (req, res) => {
+// --- SUPPRIMER (agent seulement)
+router.delete("/:id", auth(["agent"]), async (req, res) => {
   try {
     await sequelize.query("DELETE FROM clinics WHERE id = ?", {
       replacements: [req.params.id]
     });
+
     res.json({ message: "Convention supprimée avec succès." });
   } catch (err) {
     res.status(500).json({ message: "Erreur lors de la suppression." });
   }
 });
-// --- MODIFIER UNE CONVENTION ---
-router.put("/:id", async (req, res) => {
+
+// --- MODIFIER (agent seulement)
+router.put("/:id", auth(["agent"]), async (req, res) => {
   const { id } = req.params;
   const { nom, type, adresse, telephone, email, services } = req.body;
 
   try {
-    // 🔥 Comme pour l'insertion, on transforme les tableaux en JSON pour MySQL
     const telephoneJSON = JSON.stringify(telephone || []);
     const servicesJSON = JSON.stringify(services || []);
 
@@ -113,6 +110,5 @@ router.put("/:id", async (req, res) => {
     res.status(500).json({ message: "Erreur lors de la mise à jour." });
   }
 });
-
 
 module.exports = router;

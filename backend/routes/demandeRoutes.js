@@ -17,7 +17,8 @@ const { upload } = require('../config/cloudinary');
 // ─────────────────────────────
 router.post('/ajouter', upload.array('ordonnance', 10), async (req, res) => {
   try {
-    const { nom_beneficiaire, type_prestation, fonction, sexe, telephone, date_naissance } = req.body;
+    const { nom_beneficiaire, type_prestation, fonction, sexe, telephone, date_naissance,  lieu_naissance,     // ✅ AJOUT
+  etablissement   } = req.body;
 
     console.log("BODY:", req.body);
     console.log("FILES:", req.files);
@@ -40,6 +41,8 @@ const nouvelleDemande = await Demande.create({
   sexe,
   telephone,
   date_naissance,
+ lieu_naissance,
+      etablissement,
   pieces: piecesData,
   statut: "En attente"
 });
