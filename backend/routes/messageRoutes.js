@@ -2,10 +2,10 @@ const express = require("express");
 const router = express.Router();
 const Message = require("../models/Message");
 const { upload } = require("../config/cloudinary");
-const auth = require("../middleware/authMiddleware"); // 🔐 IMPORTANT
+//const auth = require("../middleware/authMiddleware"); // 🔐 IMPORTANT
 
 // 🟢 GET MESSAGES (agent + président)
-router.get("/", auth(["agent", "president"]), async (req, res) => {
+router.get("/",  async (req, res) => {
   try {
     const messages = await Message.findAll({
       order: [["createdAt", "ASC"]],
@@ -20,7 +20,7 @@ router.get("/", auth(["agent", "president"]), async (req, res) => {
 });
 
 // 🟢 POST MESSAGE (agent + président)
-router.post("/", auth(["agent", "president"]), upload.single("image"), async (req, res) => {
+router.post("/", upload.single("image"), async (req, res) => {
   const { senderId, receiverId, content } = req.body;
 
   try {

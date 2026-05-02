@@ -2,12 +2,12 @@ const express = require('express');
 const router = express.Router();
 
 const Setting = require('../models/Setting');
-const auth = require("../middleware/authMiddleware"); // 🔐 IMPORTANT
+//const auth = require("../middleware/authMiddleware"); // 🔐 IMPORTANT
 
 // ─────────────────────────────
 // GET : settings (président uniquement)
 // ─────────────────────────────
-router.get('/', auth(["president"]), async (req, res) => {
+router.get('/', async (req, res) => {
   try {
     const settings = await Setting.findAll();
 
@@ -26,7 +26,7 @@ router.get('/', auth(["president"]), async (req, res) => {
 // ─────────────────────────────
 // POST : update settings (président uniquement)
 // ─────────────────────────────
-router.post('/update', auth(["president"]), async (req, res) => {
+router.post('/update', async (req, res) => {
   try {
     const { key, value } = req.body;
 

@@ -18,34 +18,34 @@ export default function Navbar() {
   const menu = [
     { 
       name: "Paramètre", 
-      path: "/agent/Parametre", 
+      path: "/priseEnCharge/Parametre", 
       icon: Settings 
     },
     { 
       name: "Dashboard", 
-      path: "/agent/tableauDeBord", 
+      path: "/priseEnCharge/tableauDeBord", 
       icon: LayoutDashboard 
     },
     
     { 
       name: "Prise en charge", 
-      path: "/agent/priseencharge", 
+      path: "/priseEnCharge/priseencharge", 
       icon: FileCheck 
     },
     { 
       name: "Ajout Bénéficiaire", 
-      path: "/agent/AjoutEns", 
+      path: "/priseEnCharge/AjoutEns", 
       icon: UserPlus 
     },
     { 
       name: "Établissement", 
-      path: "/agent/AjoutEtab", 
+      path: "/priseEnCharge/AjoutEtab", 
       icon: School 
     },
         
     { 
       name: "Message", 
-      path: "/agent/message", 
+      path: "/priseEnCharge/message", 
       icon: MessageSquare
     },
     {
