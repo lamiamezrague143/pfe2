@@ -5,11 +5,11 @@ const Prise = require("../models/Prise");
 const bcrypt = require("bcryptjs");
 const { upload } = require("../config/cloudinary");
 const { Op, fn, col } = require("sequelize");
-const authMiddleware = require("../middleware/authMiddleware");
+//const authMiddleware = require("../middleware/authMiddleware");
 // =========================
 // 1. REGISTER
 // =========================
-router.post("/register", authMiddleware(["president"]), upload.single("photo"), async (req, res) => {
+router.post("/register", upload.single("photo"), async (req, res) => {
   try {
     const photoUrl = req.file ? req.file.path : null;
 
@@ -107,7 +107,7 @@ router.get("/search", async (req, res) => {
 // =========================
 // 3. GET ALL
 // =========================
-router.get("/all", authMiddleware(["agent", "president", "ingenieur"]), async (req, res) => {
+router.get("/all",  async (req, res) => {
   try {
     const users = await User.findAll();
     res.status(200).json(users);
@@ -134,7 +134,7 @@ router.get("/ayants-droit/:id", async (req, res) => {
 // =========================
 // 4. DELETE USER
 // =========================
-router.delete("/:id", authMiddleware(["president","agent"]), async (req, res) => {
+router.delete("/:id",  async (req, res) => {
   try {
     const result = await User.destroy({
       where: { id: req.params.id }
@@ -157,7 +157,7 @@ router.delete("/:id", authMiddleware(["president","agent"]), async (req, res) =>
 // =========================
 // 5. UPDATE USER (CORRIGÉ)
 // =========================
-router.put("/:id", authMiddleware(["president", "agent"]), upload.single("photo"), async (req, res) => {
+router.put("/:id",  upload.single("photo"), async (req, res) => {
   try {
     const { id } = req.params;
     const updateData = { ...req.body };
@@ -199,7 +199,7 @@ router.put("/:id", authMiddleware(["president", "agent"]), upload.single("photo"
     res.status(500).json({ message: "Erreur technique", details: err.message });
   }
 });
-router.post("/change-password", authMiddleware(["president", "agent", "ingenieur", "beneficiaire"]), async (req, res) => {
+router.post("/change-password", async (req, res) => {
   try {
     if (!req.body) {
       return res.status(400).json({ message: "Body manquant (express.json absent ?)" });
@@ -236,7 +236,7 @@ router.post("/change-password", authMiddleware(["president", "agent", "ingenieur
     res.status(500).json({ message: "Erreur serveur", error: err.message });
   }
 });
-router.get("/me", authMiddleware(["agent", "president", "ingenieur", "beneficiaire"]), async (req, res) => {
+router.get("/me",  async (req, res) => {
   try {
     const user = await User.findByPk(req.user.id, {
     attributes: ["id", "nomComplet", "email", "roleSystem"]

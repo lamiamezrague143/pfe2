@@ -1,10 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const TypesPrestations = require('../models/TypesPrestations');
-const auth = require("../middleware/authMiddleware"); // 🔐 IMPORTANT
+//const auth = require("../middleware/authMiddleware"); // 🔐 IMPORTANT
 
 // 📥 LISTE (président uniquement)
-router.get('/', auth(["president"]), async (req, res) => {
+router.get('/',  async (req, res) => {
   try {
     const data = await TypesPrestations.findAll({
       where: { actif: 1 }
@@ -17,7 +17,7 @@ router.get('/', auth(["president"]), async (req, res) => {
 });
 
 // ➕ AJOUT (président uniquement)
-router.post("/", auth(["president"]), async (req, res) => {
+router.post("/",  async (req, res) => {
   try {
     const { nom } = req.body;
 
@@ -33,7 +33,7 @@ router.post("/", auth(["president"]), async (req, res) => {
 });
 
 // ✏️ MODIFIER (président uniquement)
-router.put("/:id", auth(["president"]), async (req, res) => {
+router.put("/:id",  async (req, res) => {
   try {
     const { nom, actif } = req.body;
 
@@ -49,7 +49,7 @@ router.put("/:id", auth(["president"]), async (req, res) => {
 });
 
 // 🗑️ SUPPRESSION LOGIQUE (président uniquement)
-router.delete("/:id", auth(["president"]), async (req, res) => {
+router.delete("/:id", async (req, res) => {
   try {
     await TypesPrestations.update(
       { actif: false },

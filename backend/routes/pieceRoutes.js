@@ -2,10 +2,10 @@ const express = require('express');
 const router = express.Router();
 
 const { PieceDossier } = require('../models');
-const auth = require("../middleware/authMiddleware"); // 🔐 IMPORTANT
+//const auth = require("../middleware/authMiddleware"); // 🔐 IMPORTANT
 
 // 🟢 AJOUT PIÈCE (président + secrétariat)
-router.post('/ajouter', auth(["president", "secretariat"]), async (req, res) => {
+router.post('/ajouter',  async (req, res) => {
     try {
         console.log("Données reçues du Frontend :", req.body);
 

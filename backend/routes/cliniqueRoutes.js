@@ -1,10 +1,10 @@
 const express = require("express");
 const router = express.Router();
 const { sequelize } = require("../config/db");
-const auth = require("../middleware/authMiddleware"); // 🔐 IMPORTANT
+//const auth = require("../middleware/authMiddleware"); // 🔐 IMPORTANT
 
 // --- AJOUTER CONVENTION (agent seulement)
-router.post("/register", auth(["agent", "president"]), async (req, res) => {
+router.post("/register",  async (req, res) => {
   const { nom, type, adresse, telephone, email, services } = req.body;
 
   try {
@@ -47,7 +47,7 @@ router.post("/register", auth(["agent", "president"]), async (req, res) => {
 });
 
 // --- RÉCUPÉRER TOUTES LES CONVENTIONS (agent seulement)
-router.get("/all", auth(["agent"]), async (req, res) => {
+router.get("/all", async (req, res) => {
   try {
     const [rows] = await sequelize.query("SELECT * FROM clinics ORDER BY dateAjout DESC");
 
@@ -65,7 +65,7 @@ router.get("/all", auth(["agent"]), async (req, res) => {
 });
 
 // --- SUPPRIMER (agent seulement)
-router.delete("/:id", auth(["agent"]), async (req, res) => {
+router.delete("/:id",  async (req, res) => {
   try {
     await sequelize.query("DELETE FROM clinics WHERE id = ?", {
       replacements: [req.params.id]
@@ -78,7 +78,7 @@ router.delete("/:id", auth(["agent"]), async (req, res) => {
 });
 
 // --- MODIFIER (agent seulement)
-router.put("/:id", auth(["agent"]), async (req, res) => {
+router.put("/:id", async (req, res) => {
   const { id } = req.params;
   const { nom, type, adresse, telephone, email, services } = req.body;
 
