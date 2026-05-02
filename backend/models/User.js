@@ -78,6 +78,27 @@ photo: {
     type: DataTypes.DATE,
     defaultValue: DataTypes.NOW,
   },
+  firstLogin: {
+  type: DataTypes.BOOLEAN,
+  defaultValue: true,
+},
+
+roleSystem: {
+  type: DataTypes.ENUM(
+    "president",
+    "secretariat",
+    "comptable",
+    "ingenieur",
+    "agent",
+    "beneficiaire"
+  ),
+  allowNull: false
+},
+
+resetPasswordToken: {
+  type: DataTypes.STRING,
+  allowNull: true,
+},
 }, {
   timestamps: true, // utilise createdAt et updatedAt
 });

@@ -1,13 +1,13 @@
 const express = require('express');
 const router = express.Router();
 
-// ✅ FIX IMPORTANT : import direct du modèle
 const Setting = require('../models/Setting');
+const auth = require("../middleware/authMiddleware"); // 🔐 IMPORTANT
 
-// ─────────────────────────────────────────────
-// GET : Récupérer tous les settings
-// ─────────────────────────────────────────────
-router.get('/', async (req, res) => {
+// ─────────────────────────────
+// GET : settings (président uniquement)
+// ─────────────────────────────
+router.get('/', auth(["president"]), async (req, res) => {
   try {
     const settings = await Setting.findAll();
 
@@ -19,33 +19,26 @@ router.get('/', async (req, res) => {
     res.json(settingsObj);
 
   } catch (err) {
-    console.error("Erreur GET settings:", err);
     res.status(500).json({ error: "Erreur serveur" });
   }
 });
 
-// ─────────────────────────────────────────────
-// POST : Mettre à jour un plafond
-// ─────────────────────────────────────────────
-router.post('/update', async (req, res) => {
+// ─────────────────────────────
+// POST : update settings (président uniquement)
+// ─────────────────────────────
+router.post('/update', auth(["president"]), async (req, res) => {
   try {
     const { key, value } = req.body;
 
-    // ✅ Validation propre
     if (!key || value === undefined) {
       return res.status(400).json({ error: "key et value sont requis" });
     }
 
-    console.log("UPDATE SETTING:", key, value);
-
-    // ✅ Chercher le setting
     let setting = await Setting.findByPk(key);
 
     if (setting) {
-      // Mise à jour
       await setting.update({ value: String(value) });
     } else {
-      // Création
       setting = await Setting.create({ key, value: String(value) });
     }
 
@@ -56,10 +49,8 @@ router.post('/update', async (req, res) => {
     });
 
   } catch (err) {
-    console.error("❌ Erreur update setting:", err);
     res.status(500).json({ error: "Erreur serveur" });
   }
 });
 
-// ─────────────────────────────────────────────
 module.exports = router;

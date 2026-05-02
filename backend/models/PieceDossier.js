@@ -14,9 +14,9 @@ const PieceDossier = sequelize.define('PieceDossier', {
       key: 'id'
     }
   },
-  dossierId: {  // ✅ AJOUTE ÇA
-    type: DataTypes.INTEGER,
-    allowNull: true,
+dossierId: {
+  type: DataTypes.INTEGER,
+  allowNull: true, // 🔥 IMPORTANT
     references: {
       model: 'Dossiers',
       key: 'id'
