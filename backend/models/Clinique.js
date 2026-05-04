@@ -2,7 +2,10 @@ const { DataTypes } = require("sequelize");
 const { sequelize } = require("../config/db");
 
 const Clinic = sequelize.define("Clinic", {
-  nom: DataTypes.STRING,
+  nom: {
+  type: DataTypes.STRING,
+  allowNull: false
+},
   numeroSequence: DataTypes.STRING,
   type: DataTypes.STRING,
   adresse: DataTypes.STRING,

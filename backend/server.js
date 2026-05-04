@@ -6,7 +6,8 @@ const fs = require("fs");
 const http = require("http");
 const { Server } = require("socket.io");
 const app = express();
-
+// ✅ AJOUT IMPORTANT ICI
+require("./models/association");
 
 const server = http.createServer(app);
 
@@ -38,6 +39,7 @@ const messageRoutes = require("./routes/messageRoutes");
 // ... après tes middlewares (cors, json, etc.)
 const session = require('express-session');
 
+const prixPrestationsRoutes = require("./routes/prixPrestationsRoutes");
 
 const noteRoutes = require("./routes/noteRoutes");
 const archiveRoutes = require('./routes/archiveRoutes');
@@ -83,15 +85,13 @@ app.use("/api/agents", require("./routes/agentRoutes"));
 app.use("/api/notes", noteRoutes);
 app.use('/api/archives', archiveRoutes);
 app.use("/api", loginRoutes);
+app.use("/api/prix-prestations", prixPrestationsRoutes);
+
 app.get("/api/test", (req, res) => {
   res.json({ message: "Backend fonctionne !" });
 });
 
-app.use(session({
-  secret: "secret_key",
-  resave: false,
-  saveUninitialized: true
-}));
+
 // --- LOGIQUE D'INITIALISATION ---
 const initSettings = async () => {
   const defaults = [

@@ -282,7 +282,91 @@ const getFileUrl = (data) => {
     </div>
   );
 }
+function PrixModal({ prixList, onClose, onConfirm }) {
+  const [search, setSearch] = useState("");
+  const [selected, setSelected] = useState({});
 
+  const toggle = (item) => {
+    setSelected(prev => {
+      const key = String(item.id);
+      if (prev[key]) { const n = { ...prev }; delete n[key]; return n; }
+      return { ...prev, [key]: parseFloat(item.prix) };
+    });
+  };
+
+  const total = Object.values(selected).reduce((a, b) => a + b, 0);
+const filtered = prixList.filter(p =>
+  (p?.nom || p?.TypesPrestations?.nom || "").toLowerCase().includes(search.toLowerCase())
+);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden max-h-[85vh] flex flex-col">
+        {/* Header */}
+        <div className="p-4 border-b flex justify-between items-center bg-gray-50">
+          <h2 className="font-bold text-gray-800 text-sm">Sélectionner les analyses</h2>
+          <button onClick={onClose} className="w-7 h-7 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-sm">✕</button>
+        </div>
+
+        {/* Search */}
+        <div className="p-3 border-b">
+          <input
+            type="text"
+            placeholder="Rechercher..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-300"
+          />
+        </div>
+
+        {/* Liste */}
+        <div className="overflow-y-auto flex-1">
+          {filtered.map((item) => {
+            const key = String(item.id);
+            const isSel = !!selected[key];
+            return (
+              <div
+                key={item.id}
+                onClick={() => toggle(item)}
+                className={`flex items-center justify-between px-4 py-2.5 cursor-pointer border-b border-gray-50 transition-colors ${isSel ? "bg-green-50" : "hover:bg-gray-50"}`}
+              >
+<span className="text-sm text-gray-800">
+  {item?.nom || item?.TypesPrestations?.nom || `Analyse #${item.id}`}
+</span>                <div className="flex items-center gap-3">
+                  <span className="text-xs text-gray-500 font-medium">{parseFloat(item.prix).toLocaleString("fr-FR")} DA</span>
+                  <div className={`w-5 h-5 rounded border flex items-center justify-center text-[11px] ${isSel ? "bg-green-600 border-green-600 text-white" : "border-gray-300"}`}>
+                    {isSel ? "✓" : ""}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Footer */}
+        <div className="p-4 border-t bg-gray-50 space-y-2">
+          <div className="flex justify-between items-center">
+            <span className="text-sm text-gray-500">Total sélectionné :</span>
+            <span className="font-bold text-gray-900 text-base">{total.toLocaleString("fr-FR")} DA</span>
+          </div>
+          {total > 0 && (
+            <div className="flex gap-4 text-xs bg-white border border-gray-200 rounded-lg px-3 py-2">
+              <span className="text-gray-500">Part OS (70%) : <strong className="text-green-700">{Math.round(total * 0.7).toLocaleString("fr-FR")} DA</strong></span>
+              <span className="text-gray-500">Part perso (30%) : <strong className="text-orange-700">{Math.round(total * 0.3).toLocaleString("fr-FR")} DA</strong></span>
+            </div>
+          )}
+          <button
+            onClick={() => { onConfirm(total); onClose(); }}
+            disabled={total === 0}
+            className="w-full py-2.5 bg-green-700 text-white rounded-xl font-bold text-sm hover:bg-green-800 disabled:opacity-40 disabled:cursor-not-allowed transition"
+          >
+            Confirmer {total > 0 ? `— ${total.toLocaleString("fr-FR")} DA` : ""}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 // ─── COMPOSANT PRINCIPAL ──────────────────────────────────────────────────────
 export default function FormulairePriseEnCharge() {
   const [activeTab, setActiveTab] = useState("ajouter");
@@ -314,17 +398,22 @@ export default function FormulairePriseEnCharge() {
   const inputLine = "border-b border-dotted border-black bg-transparent outline-none focus:bg-blue-50 px-1 transition-colors";
   const selectStyle = "border-b border-dotted border-black bg-transparent outline-none cursor-pointer hover:bg-blue-50 transition-colors";
   const [typesprestations, setTypesPrestations] = useState([]);
-  const getOneMonthLater = () => {
-    const today = new Date();
-    const nextMonth = new Date(today);
-    nextMonth.setMonth(today.getMonth() + 1);
-    return nextMonth.toISOString().split("T")[0];
-  };
+const getEndOfCurrentMonth = () => {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth() + 1, 0).toLocaleDateString("fr-FR");
+};
+const [showPrixModal, setShowPrixModal] = useState(false);
+const [prixList, setPrixList] = useState([]);
+const [selectedPrix, setSelectedPrix] = useState({});
+const [filtreDebut, setFiltreDebut] = useState("");
+const [filtreFin, setFiltreFin] = useState("");
+const [filtreNom, setFiltreNom] = useState("");
 
-  const getLastDayOfMonth = () => {
-    const now = new Date();
-    return new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split("T")[0];
-  };
+const getLastDayOfMonth = () => {
+  const now = new Date();
+  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  return lastDay.toLocaleDateString("fr-FR");
+};
 
   const fetchDemandesEnLigne = async () => {
     try {
@@ -332,7 +421,48 @@ export default function FormulairePriseEnCharge() {
       setDemandesEnLigne(res.data);
     } catch (err) { console.error("Erreur chargement demandes:", err); }
   };
+const fetchPrix = async () => {
+  if (!formData.sfEtablissement) {
+    alert("Sélectionne une clinique d'abord");
+    return;
+  }
 
+  try {
+    setShowPrixModal(false); // reset UI propre
+    setPrixList([]);
+
+    const res = await fetch(
+      `http://localhost:5001/api/prix-prestations/clinique/${formData.sfEtablissement}`
+    );
+
+    // ❌ Gestion erreur HTTP (important)
+    if (!res.ok) {
+      throw new Error(`HTTP Error: ${res.status}`);
+    }
+
+    const result = await res.json();
+
+    // ✅ Normalisation robuste des données
+const list =
+  Array.isArray(result)
+    ? result
+    : Array.isArray(result?.data)
+    ? result.data
+    : Array.isArray(result?.prix)
+    ? result.prix
+    : [];
+
+console.log("🔍 Premier item reçu:", JSON.stringify(list[0]));
+
+    setPrixList(list);
+    setSelectedPrix({});
+    setShowPrixModal(true);
+
+  } catch (err) {
+    console.error("❌ fetchPrix error:", err);
+    alert("Erreur chargement prix des prestations");
+  }
+};
   useEffect(() => {
     if (activeTab === "en_ligne") fetchDemandesEnLigne();
   }, [activeTab]);
@@ -576,7 +706,6 @@ useEffect(() => {
         dateForm: formData.dateForm,
         prestation: formData.prestation,
         conventionStartDate: formData.conventionStartDate || null,
-        conventionEndDate: getLastDayOfMonth(),
         fNom: formData.fNom, fPrenom: formData.fPrenom,
         fDateLieu: formData.fDateLieu, fFonction: formData.fFonction, fVivant: formData.fVivant,
         pNom: formData.pNom, pPrenom: formData.pPrenom,
@@ -707,6 +836,13 @@ useEffect(() => {
           onDecision={executerDecision}
         />
       )}
+      {showPrixModal && (
+  <PrixModal
+    prixList={prixList}
+    onClose={() => setShowPrixModal(false)}
+    onConfirm={(total) => setFormData(prev => ({ ...prev, montantTotal: total }))}
+  />
+)}
 
       {/* ── ONGLETS ── */}
       <div className="tabs-nav mx-auto w-[210mm] flex gap-2 mb-4 print:hidden px-2">
@@ -873,11 +1009,12 @@ useEffect(() => {
   </option>
 ))}
 </select>
+
             </div>
 
             <div>
               <span>Entrant dans le cadre de la convention médicale paraphée en date du </span>
-              <span className="font-bold border-b px-2">{getOneMonthLater()}</span>
+              <span className="font-bold border-b px-2">{getLastDayOfMonth()}</span>
             </div>
 
             <div className="border-t pt-2 space-y-3">
@@ -922,27 +1059,55 @@ useEffect(() => {
               <h3 className="font-bold underline text-[12px] uppercase">Le Patient :</h3>
               <div className="flex items-center gap-3">
                 <span className="font-bold text-red-800">Bénéficiaire :</span>
-                <select className={selectStyle} onChange={(e) => {
-                  const val = e.target.value;
-                  if (val === "") {
-                    setFormData(p => ({ ...p, pNom: "", pPrenom: "", pDateLieu: "", pLien: "" }));
-                  } else if (val === "self") {
-                    setFormData(p => ({ ...p, pNom: p.fNom, pPrenom: p.fPrenom, pDateLieu: p.fDateLieu, pLien: "Lui-même" }));
-                  } else if (selectedUserFull?.ayantDroits) {
-                    const ad = selectedUserFull.ayantDroits[val];
-                    setFormData(p => ({
-                      ...p,
-                      pNom: ad.nom || "", pPrenom: ad.prenom || "",
-                      pDateLieu: ad.dateNaissance ? `${new Date(ad.dateNaissance).toLocaleDateString()} à ${ad.lieuNaissance || ''}` : "",
-                      pLien: ad.lien || ""
-                    }));
-                    if (ad.photo) {
-      setPhotoUrl(ad.photo.startsWith('http') ? ad.photo : `http://localhost:5001/${ad.photo.replace(/^\//, '')}`);
-    } else {
-      setPhotoUrl(null); // pas de photo pour cet ayant droit
+         <select
+  className={selectStyle}
+  onChange={(e) => {
+    const val = e.target.value;
+
+    if (val === "") {
+      setFormData(p => ({
+        ...p,
+        pNom: "",
+        pPrenom: "",
+        pDateLieu: "",
+        pLien: ""
+      }));
+
+    } else if (val === "self") {
+      setFormData(p => ({
+        ...p,
+        pNom: p.fNom,
+        pPrenom: p.fPrenom,
+        pDateLieu: p.fDateLieu,
+        pLien: "Lui-même"
+      }));
+
+    } else if (selectedUserFull?.ayantDroits) {
+      const ad = selectedUserFull.ayantDroits[val];
+
+      setFormData(p => ({
+        ...p,
+        pNom: ad.nom || "",
+        pPrenom: ad.prenom || "",
+        pDateLieu: ad.dateNaissance
+          ? `${new Date(ad.dateNaissance).toLocaleDateString()} à ${ad.lieuNaissance || ''}`
+          : "",
+        pLien: ad.lien || ""
+      }));
+
+      // ✅ FIX ICI
+      if (typeof ad.photo === "string") {
+        setPhotoUrl(
+          ad.photo.startsWith("http")
+            ? ad.photo
+            : `http://localhost:5001/${ad.photo.replace(/^\//, "")}`
+        );
+      } else {
+        setPhotoUrl(null);
+      }
     }
-                  }
-                }}>
+  }}
+>
                   <option value="">-- Choisir un bénéficiaire --</option>
                   <option value="self">L'assuré lui-même</option>
                   {selectedUserFull?.ayantDroits?.map((ad, i) => (
@@ -970,11 +1135,27 @@ useEffect(() => {
                 </div>
               )}
               <p className="font-bold mt-1 text-black">
-                Montant pris en charge :
-                <input name="montantTotal" value={formData.montantTotal} onChange={handleChange}
-                  className={`border-b-2 border-black w-32 font-black text-sm px-2 outline-none ${isBlocked ? 'text-red-600 bg-red-50' : 'text-black'}`}
-                /> DA
-              </p>
+  Montant pris en charge :
+  <input
+    name="montantTotal"
+    value={formData.montantTotal}
+    onChange={handleChange}
+    onClick={formData.sfEtablissement ? fetchPrix : undefined}
+    className={`border-b-2 border-black w-32 font-black text-sm px-2 outline-none cursor-pointer ${isBlocked ? 'text-red-600 bg-red-50' : 'text-black'}`}
+    readOnly={!!formData.sfEtablissement}
+    placeholder={formData.sfEtablissement ? "Cliquer pour choisir" : ""}
+  /> DA
+</p>
+{formData.montantTotal > 0 && (
+  <div className="flex gap-4 text-[10px] mt-1">
+    <span className="text-green-700 font-bold">
+      Part OS (70%) : {Math.round(parseFloat(formData.montantTotal) * 0.7).toLocaleString("fr-FR")} DA
+    </span>
+    <span className="text-orange-700 font-bold">
+      Part perso (30%) : {Math.round(parseFloat(formData.montantTotal) * 0.3).toLocaleString("fr-FR")} DA
+    </span>
+  </div>
+)}
             </div>
 
             <p className="text-[9px] text-justify leading-tight text-gray-500">
@@ -1033,64 +1214,162 @@ useEffect(() => {
       )}
 
       {/* ── ONGLET : HISTORIQUE ── */}
-      {activeTab === "consulter" && (
-        <div className="tab-consulter mx-auto w-[210mm] bg-white p-8 rounded-lg border border-gray-200 min-h-[600px]">
-          <h2 className="text-xl font-bold border-b pb-4 mb-6 text-blue-800 flex justify-between items-center">
-            <span>Historique des prises en charge ({new Date().getFullYear()})</span>
-            <span className="text-sm bg-blue-100 px-3 py-1 rounded text-blue-600">{history.length} entrées</span>
+{activeTab === "consulter" && (() => {
+  const historiqueFiltré = history.filter(item => {
+    const date = new Date(item.createdAt);
+    if (filtreDebut && date < new Date(filtreDebut)) return false;
+    if (filtreFin && date > new Date(filtreFin + "T23:59:59")) return false;
+    const nomPatient = `${item.pNom || ""} ${item.pPrenom || ""}`.toLowerCase();
+    const nomFonct = `${item.fNom || ""} ${item.fPrenom || ""}`.toLowerCase();
+    if (filtreNom && !nomPatient.includes(filtreNom.toLowerCase()) && !nomFonct.includes(filtreNom.toLowerCase())) return false;
+    return true;
+  });
+
+  const exportCSV = () => {
+    const header = ["Référence","Patient","Fonctionnaire","Prestation","Montant Total","Part OS (70%)","Part Perso (30%)","Date","Agent","Statut"];
+    const rows = historiqueFiltré.map(i => [
+      i.ref || i.numeroSequentiel || "",
+      `${i.pNom || ""} ${i.pPrenom || ""}`.trim(),
+      `${i.fNom || ""} ${i.fPrenom || ""}`.trim(),
+      i.prestation || "",
+      i.montantTotal || 0,
+      Math.round((i.montantTotal || 0) * 0.7),
+      Math.round((i.montantTotal || 0) * 0.3),
+      new Date(i.createdAt).toLocaleDateString("fr-FR"),
+      i.agentNom || "",
+      i.annule ? "Annulée" : "Active"
+    ]);
+    const csv = [header, ...rows].map(r => r.join(";")).join("\n");
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `prises_en_charge_${new Date().toLocaleDateString("fr-FR").replace(/\//g, "-")}.csv`;
+    a.click();
+  };
+
+  return (
+    <div className="tab-consulter mx-auto w-full max-w-5xl px-4">
+      <div className="bg-white p-6 rounded-xl border border-gray-200 min-h-[600px]">
+        <div className="flex justify-between items-center border-b pb-4 mb-5">
+          <h2 className="text-xl font-bold text-blue-800">
+            Historique {new Date().getFullYear()}
           </h2>
-          <div className="overflow-x-auto">
-            {history.length === 0 ? (
-              <p className="text-gray-400 italic text-center py-20">Aucune prise en charge trouvée pour cette année.</p>
-            ) : (
-              <table className="w-full text-left text-[12px] border-collapse">
-                <thead>
-                  <tr className="bg-gray-50 border-b-2">
-                    <th className="p-3">Référence</th>
-                    <th className="p-3">Patient</th>
-                    <th className="p-3">Prestation</th>
-                    <th className="p-3 text-right">Montant</th>
-                    <th className="p-3">Date</th>
-                    <th className="p-3 text-center">Action</th>
-                    <th className="p-3">Agent</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {history.map((item) => (
-                    <tr key={item.id} className={`border-b transition-colors ${item.annule ? 'bg-red-50 opacity-60' : 'hover:bg-blue-50'}`}>
-                      <td className="p-3 font-mono font-bold">
-                        <span className={item.annule ? 'line-through text-gray-400' : ''}>{item.ref || item.numeroSequentiel || "—"}</span>
-                      </td>
-                      <td className="p-3 uppercase font-bold">
-                        <span className={item.annule ? 'line-through text-gray-400' : ''}>{item.pNom} {item.pPrenom}</span>
-                      </td>
-                      <td className="p-3">
-                        <span className={item.annule ? 'line-through text-gray-400' : ''}>{item.prestation}</span>
-                      </td>
-                      <td className="p-3 text-right font-bold text-blue-900">
-                        <span className={item.annule ? 'line-through text-gray-400' : ''}>{(item.montantTotal || 0).toLocaleString('fr-FR')} DA</span>
-                      </td>
-                      <td className="p-3 text-gray-500">
-                        <span className={item.annule ? 'line-through text-gray-400' : ''}>{new Date(item.createdAt).toLocaleDateString('fr-FR')}</span>
-                      </td>
-                      <td className="p-3 text-center">
-                        {item.annule ? (
-                          <span className="text-red-400 text-[11px] font-bold italic">Annulée</span>
-                        ) : (
-                          <button onClick={() => annulerPrise(item.id)} className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600">
-                            Annuler
-                          </button>
-                        )}
-                      </td>
-                      <td className="p-3">{item.agentNom || "—"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
+          <span className="text-sm bg-blue-100 px-3 py-1 rounded text-blue-600">
+            {historiqueFiltré.length} / {history.length} entrées
+          </span>
         </div>
-      )}
+
+        {/* Filtres */}
+        <div className="flex gap-3 mb-5 flex-wrap items-end bg-gray-50 p-3 rounded-xl">
+          <div>
+            <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Du</label>
+            <input type="date" value={filtreDebut} onChange={e => setFiltreDebut(e.target.value)}
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-300" />
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Au</label>
+            <input type="date" value={filtreFin} onChange={e => setFiltreFin(e.target.value)}
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-300" />
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Recherche</label>
+            <input type="text" value={filtreNom} onChange={e => setFiltreNom(e.target.value)}
+              placeholder="Nom patient ou fonctionnaire..."
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-300 w-52" />
+          </div>
+          <button onClick={() => { setFiltreDebut(""); setFiltreFin(""); setFiltreNom(""); }}
+            className="px-4 py-2 bg-gray-200 text-gray-600 rounded-lg text-sm font-bold hover:bg-gray-300">
+            🔄 Réinitialiser
+          </button>
+          <button onClick={exportCSV}
+            className="px-4 py-2 bg-green-700 text-white rounded-lg text-sm font-bold hover:bg-green-800 flex items-center gap-2 ml-auto">
+            ⬇️ Télécharger CSV
+          </button>
+        </div>
+
+        {/* Résumé montants */}
+        {historiqueFiltré.length > 0 && (
+          <div className="grid grid-cols-3 gap-3 mb-5">
+            {[
+              { label: "Total montants", val: historiqueFiltré.filter(i => !i.annule).reduce((s, i) => s + parseFloat(i.montantTotal || 0), 0), color: "blue" },
+              { label: "Part OS (70%)", val: historiqueFiltré.filter(i => !i.annule).reduce((s, i) => s + Math.round(parseFloat(i.montantTotal || 0) * 0.7), 0), color: "green" },
+              { label: "Part Perso (30%)", val: historiqueFiltré.filter(i => !i.annule).reduce((s, i) => s + Math.round(parseFloat(i.montantTotal || 0) * 0.3), 0), color: "orange" },
+            ].map(({ label, val, color }) => (
+              <div key={label} className={`bg-${color}-50 border border-${color}-100 rounded-xl p-3`}>
+                <p className={`text-xs font-bold text-${color}-500 uppercase`}>{label}</p>
+                <p className={`text-lg font-black text-${color}-700`}>{val.toLocaleString("fr-FR")} DA</p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Tableau */}
+        <div className="overflow-x-auto">
+          {historiqueFiltré.length === 0 ? (
+            <p className="text-gray-400 italic text-center py-20">Aucune prise en charge trouvée.</p>
+          ) : (
+            <table className="w-full text-left text-[12px] border-collapse">
+              <thead>
+                <tr className="bg-gray-50 border-b-2 text-[11px] uppercase text-gray-500">
+                  <th className="p-3">Référence</th>
+                  <th className="p-3">Patient</th>
+                  <th className="p-3">Fonctionnaire</th>
+                  <th className="p-3">Prestation</th>
+                  <th className="p-3 text-right">Montant</th>
+                  <th className="p-3">Date</th>
+                  <th className="p-3 text-center">Statut</th>
+                  <th className="p-3">Agent</th>
+                  <th className="p-3 text-center">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {historiqueFiltré.map((item) => (
+                  <tr key={item.id} className={`border-b transition-colors ${item.annule ? "bg-red-50 opacity-60" : "hover:bg-blue-50"}`}>
+                    <td className="p-3 font-mono font-bold text-xs">
+                      <span className={item.annule ? "line-through text-gray-400" : ""}>{item.ref || item.numeroSequentiel || "—"}</span>
+                    </td>
+                    <td className="p-3 font-bold uppercase">
+                      <span className={item.annule ? "line-through text-gray-400" : ""}>
+                        {item.pNom && item.pPrenom ? `${item.pNom} ${item.pPrenom}` : item.fNom && item.fPrenom ? `${item.fNom} ${item.fPrenom}` : "—"}
+                      </span>
+                    </td>
+                    <td className="p-3 text-gray-600">
+                      <span className={item.annule ? "line-through text-gray-400" : ""}>{item.fNom} {item.fPrenom}</span>
+                    </td>
+                    <td className="p-3">
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${item.annule ? "bg-gray-100 text-gray-400 line-through" : "bg-blue-50 text-blue-700"}`}>
+                        {item.prestation}
+                      </span>
+                    </td>
+                    <td className="p-3 text-right font-bold text-blue-900">
+                      <span className={item.annule ? "line-through text-gray-400" : ""}>{(item.montantTotal || 0).toLocaleString("fr-FR")} DA</span>
+                    </td>
+                    <td className="p-3 text-gray-500 text-xs">{new Date(item.createdAt).toLocaleDateString("fr-FR")}</td>
+                    <td className="p-3 text-center">
+                      {item.annule
+                        ? <span className="text-red-400 text-[10px] font-bold italic">Annulée</span>
+                        : <span className="text-green-600 text-[10px] font-bold">Active</span>}
+                    </td>
+                    <td className="p-3 text-xs text-gray-500">{item.agentNom || "—"}</td>
+                    <td className="p-3 text-center">
+                      {!item.annule && (
+                        <button onClick={() => annulerPrise(item.id)}
+                          className="bg-red-500 text-white px-3 py-1 rounded-lg text-xs hover:bg-red-600 font-bold">
+                          Annuler
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+})()}
 
       {/* ── BOUTONS FLOTTANTS ── */}
       {activeTab === "ajouter" && (
