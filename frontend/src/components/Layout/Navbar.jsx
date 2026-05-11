@@ -17,17 +17,6 @@ export default function Navbar() {
 
   const menu = [
     { 
-      name: "Paramètre", 
-      path: "/priseEnCharge/Parametre", 
-      icon: Settings 
-    },
-    { 
-      name: "Dashboard", 
-      path: "/priseEnCharge/tableauDeBord", 
-      icon: LayoutDashboard 
-    },
-    
-    { 
       name: "Prise en charge", 
       path: "/priseEnCharge/priseencharge", 
       icon: FileCheck 

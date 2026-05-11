@@ -16,10 +16,21 @@ export default function AddClinicForm() {
   });
 
   const TYPES = ["Clinique", "Laboratoire d'analyse", "Centre d'imagerie" , "Clinique dentaire","Ophtalmologie"];
-  const SERVICES_DISPONIBLES = [
-    "Radiologie", "Soins dentaires", "Interventions chirurgicales", 
-    "Analyses medicales", "Soins ophtalmologiques" , "Circoncision"
-  ];
+const [servicesDisponibles, setServicesDisponibles] = useState([]);
+
+useEffect(() => {
+  const chargerServices = async () => {
+    try {
+      const res = await fetch("http://localhost:5001/api/typesprestations");
+      const data = await res.json();
+      const liste = Array.isArray(data) ? data : data.types || data.data || [];
+      setServicesDisponibles(liste.map(t => t.nom));
+    } catch (err) {
+      console.error("Erreur chargement prestations", err);
+    }
+  };
+  chargerServices();
+}, []);
 
   const chargerCliniques = async () => {
     try {
@@ -171,7 +182,7 @@ export default function AddClinicForm() {
             <div className="pt-6 border-t border-gray-100">
               <label className="text-sm font-black text-green-900 uppercase tracking-widest mb-4 block">Services Assurés</label>
               <div className="flex flex-wrap gap-3">
-                {SERVICES_DISPONIBLES.map(service => (
+                {servicesDisponibles.map(service => (
                   <button key={service} type="button" onClick={() => toggleService(service)} 
                     className={`px-6 py-3 rounded-2xl font-bold transition-all border-2 ${formData.services.includes(service) ? "bg-green-900 border-green-900 text-white shadow-md" : "bg-white border-gray-100 text-gray-500 hover:border-green-200"}`}>
                     {service}
