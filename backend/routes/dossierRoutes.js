@@ -3,10 +3,10 @@ const router = express.Router();
 const { Dossier, PieceDossier } = require('../models');
 const { sequelize } = require('../config/db');
 const { Op } = require('sequelize');
-//const auth = require("../middleware/authMiddleware"); // 🔐 IMPORTANT
+const authMiddleware = require("../middleware/authMiddleware"); // 🔐 IMPORTANT
 
-// ✅ AJOUTER DOSSIER (président + secrétariat)
-router.post('/ajouter', async (req, res) => {
+// ✅ AJOUTER DOSSIER (secrétariat + président)
+router.post('/ajouter', authMiddleware(["secretariat", "president"]), async (req, res) => {
   const t = await sequelize.transaction();
   try {
     const {
@@ -63,8 +63,9 @@ router.post('/ajouter', async (req, res) => {
     res.status(500).json({ message: err.message, stack: err.stack, errors: err.errors });
   }
 });
-// ✅ LISTE GÉNÉRALE (président + secrétariat)
-router.get('/liste-generale', async (req, res) => {
+
+// ✅ LISTE GÉNÉRALE (secrétariat + président)
+router.get('/liste-generale', authMiddleware(["secretariat", "president"]), async (req, res) => {
   try {
     const { debut, fin } = req.query;
 
@@ -87,8 +88,8 @@ router.get('/liste-generale', async (req, res) => {
   }
 });
 
-// ✅ SUPPRIMER (président + secrétariat)
-router.delete('/:id',  async (req, res) => {
+// ✅ SUPPRIMER (secrétariat + président)
+router.delete('/:id', authMiddleware(["secretariat", "president"]), async (req, res) => {
   try {
     await Dossier.destroy({ where: { id: req.params.id } });
     res.json({ message: "Dossier supprimé" });

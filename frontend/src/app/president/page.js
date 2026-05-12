@@ -1,7 +1,7 @@
 "use client";
-
+import ProtectedRoutes from "../../components/ProtectedRoutes";
 import React, { useState, useEffect, useRef } from "react";
-import axios from "axios";
+
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { 
@@ -31,9 +31,8 @@ import {
   SunIcon,
   MoonIcon
 } from '@heroicons/react/24/outline';
-
-const API_URL = "http://localhost:5001/api/archives";
-
+import { apiFetch } from "../../lib/api";
+const API_URL = "/archives"; 
 const STATUS_LABELS = {
   open: { label: "Ouvert", color: "#166534", bg: "rgba(21,128,61,0.1)" },
   pending: { label: "En attente", color: "#92400e", bg: "rgba(234,179,8,0.12)" },
@@ -162,51 +161,66 @@ export default function ArchivePVPage() {
   const [toast, setToast] = useState(null);
   const showToast = (msg) => setToast(msg);
 
-  const loadArchives = async () => {
-    setLoading(true);
-    try {
-      const params = {};
-      if (searchTerm) params.search = searchTerm;
-      if (filterStatus) params.status = filterStatus;
-      const res = await axios.get(API_URL, { params });
-      setArchives(Array.isArray(res.data) ? res.data : res.data.archives || []);
-    } catch (err) {
-      console.error(err);
-      showToast("❌ Erreur de chargement");
-    } finally {
-      setLoading(false);
-    }
-  };
+const loadArchives = async () => {
+  setLoading(true);
+  try {
+    const query = new URLSearchParams();
+    if (searchTerm) query.append("search", searchTerm);
+    if (filterStatus) query.append("status", filterStatus);
 
+    const data = await apiFetch(`/archives?${query.toString()}`);
+    if (!data) return; // 401 → redirect géré dans apiFetch
+    setArchives(Array.isArray(data) ? data : data.archives || []);
+  } catch (err) {
+    console.error(err);
+    showToast("❌ Erreur de chargement");
+  } finally {
+    setLoading(false);
+  }
+};
   useEffect(() => {
     const delay = setTimeout(() => loadArchives(), 300);
     return () => clearTimeout(delay);
   }, [searchTerm, filterStatus]);
 
-  const handleUpload = async (e) => {
-    e.preventDefault();
-    if (!nomDossier.trim()) {
-      showToast("❌ Le nom du dossier est requis");
+const handleUpload = async (e) => {
+  e.preventDefault();
+  if (!nomDossier.trim()) { showToast("❌ Le nom du dossier est requis"); return; }
+
+  const formData = new FormData();
+  formData.append("nomDossier", nomDossier);
+  formData.append("date", datePV);
+  formData.append("pages", nbPages);
+  formData.append("status", status);
+  formData.append("description", description);
+  files.forEach((f) => formData.append("files", f));
+
+  const token = localStorage.getItem("token");
+
+  try {
+    const res = await fetch(`http://localhost:5001/api/archives/upload`, {
+      method: "POST",
+      headers: {
+        // PAS de Content-Type ici → multipart/form-data auto
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: formData,
+    });
+
+    if (res.status === 401) {
+      localStorage.clear();
+      window.location.href = "/";
       return;
     }
-    const formData = new FormData();
-    formData.append("nomDossier", nomDossier);
-    formData.append("date", datePV);
-    formData.append("pages", nbPages);
-    formData.append("status", status);
-    formData.append("description", description);
-    files.forEach((f) => formData.append("files", f));
-    try {
-      await axios.post(`${API_URL}/upload`, formData);
-      resetForm();
-      loadArchives();
-      showToast("✅ PV enregistré avec succès");
-    } catch (err) {
-      console.error(err);
-      showToast("❌ Erreur lors de l'enregistrement");
-    }
-  };
 
+    resetForm();
+    loadArchives();
+    showToast("✅ PV enregistré avec succès");
+  } catch (err) {
+    console.error(err);
+    showToast("❌ Erreur lors de l'enregistrement");
+  }
+};
   const resetForm = () => {
     setNomDossier("");
     setDatePV("");
@@ -217,40 +231,39 @@ export default function ArchivePVPage() {
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  const deleteArchive = async (id) => {
-    if (!confirm("Supprimer ce PV définitivement ?")) return;
-    try {
-      await axios.delete(`${API_URL}/${id}`);
-      loadArchives();
-      showToast("🗑️ PV supprimé");
-      setViewPV(null);
-      setEditPV(null);
-    } catch {
-      showToast("❌ Erreur suppression");
-    }
-  };
+const deleteArchive = async (id) => {
+  if (!confirm("Supprimer ce PV définitivement ?")) return;
+  try {
+    await apiFetch(`/archives/${id}`, { method: "DELETE" });
+    loadArchives();
+    showToast("🗑️ PV supprimé");
+    setViewPV(null);
+    setEditPV(null);
+  } catch {
+    showToast("❌ Erreur suppression");
+  }
+};
 
-  const handleUpdate = async () => {
-    if (!editNom.trim()) {
-      showToast("❌ Le nom est requis");
-      return;
-    }
-    try {
-      await axios.put(`${API_URL}/${editPV.id}`, {
+const handleUpdate = async () => {
+  if (!editNom.trim()) { showToast("❌ Le nom est requis"); return; }
+  try {
+    await apiFetch(`/archives/${editPV.id}`, {
+      method: "PUT",
+      body: JSON.stringify({
         nomDossier: editNom,
         date: editDate,
         pages: editPages,
         status: editStatus,
         description: editDesc,
-      });
-      setEditPV(null);
-      loadArchives();
-      showToast("✅ PV mis à jour");
-    } catch {
-      showToast("❌ Erreur modification");
-    }
-  };
-
+      }),
+    });
+    setEditPV(null);
+    loadArchives();
+    showToast("✅ PV mis à jour");
+  } catch {
+    showToast("❌ Erreur modification");
+  }
+};
   const openEdit = (arc) => {
     setEditPV(arc);
     setEditNom(arc.nomDossier || "");

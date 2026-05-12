@@ -1,5 +1,5 @@
 "use client";
-
+import ProtectedRoutes from "../../../components/ProtectedRoutes";
 import React, { useState, useEffect, useCallback } from "react";
 import axios from "axios";
 import Link from "next/link";

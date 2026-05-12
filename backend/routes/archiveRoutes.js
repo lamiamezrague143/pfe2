@@ -3,9 +3,10 @@ const router = express.Router();
 const { upload } = require('../config/cloudinary');
 const Archive = require('../models/Archive');
 const { Op } = require('sequelize');
-//const auth =require("../middleware/authMiddleware"); // 🔐 IMPORTANT
+const authMiddleware = require("../middleware/authMiddleware"); // 🔐 IMPORTANT
+
 // 👑 UPLOAD (président uniquement)
-router.post('/upload',  upload.array('files'), async (req, res) => {
+router.post('/upload', authMiddleware(["president"]), upload.array('files'), async (req, res) => {
   try {
     if (!req.files || req.files.length === 0) {
       return res.status(400).json({ message: "Aucun fichier reçu" });
@@ -32,7 +33,7 @@ router.post('/upload',  upload.array('files'), async (req, res) => {
 });
 
 // 👑 GET (président uniquement)
-router.get("/",  async (req, res) => {
+router.get("/", authMiddleware(["president"]), async (req, res) => {
   const { search } = req.query;
 
   const where = search
@@ -48,13 +49,13 @@ router.get("/",  async (req, res) => {
 });
 
 // 👑 DELETE (président uniquement)
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", authMiddleware(["president"]), async (req, res) => {
   await Archive.destroy({ where: { id: req.params.id } });
   res.json({ message: "Supprimé" });
 });
 
 // 👑 UPDATE (président uniquement)
-router.put("/:id",  async (req, res) => {
+router.put("/:id", authMiddleware(["president"]), async (req, res) => {
   const { nomDossier } = req.body;
 
   await Archive.update(

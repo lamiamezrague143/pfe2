@@ -2,10 +2,10 @@ const express = require("express");
 const router = express.Router();
 const Prise = require("../models/Prise");
 const { Op } = require("sequelize");
-//const auth = require("../middleware/authMiddleware"); // 🔐 IMPORTANT
+const authMiddleware = require("../middleware/authMiddleware"); // 🔐 IMPORTANT
 
 // 🟢 ENREGISTRER (agent + président)
-router.post("/", async (req, res) => {
+router.post("/", authMiddleware(["agent", "president"]), async (req, res) => {
   try {
     const data = { ...req.body };
 
@@ -38,7 +38,7 @@ router.post("/", async (req, res) => {
 });
 
 // 🟢 LISTE (agent + président)
-router.get("/all", async (req, res) => {
+router.get("/all", authMiddleware(["agent", "president"]), async (req, res) => {
   try {
     const { search } = req.query;
 
@@ -67,7 +67,7 @@ router.get("/all", async (req, res) => {
 });
 
 // 🟢 PROCHAIN NUMERO (agent + président)
-router.get("/prochain-numero/:clinicId",  async (req, res) => {
+router.get("/prochain-numero/:clinicId", authMiddleware(["agent", "president"]), async (req, res) => {
   try {
     const { clinicId } = req.params;
 
@@ -87,7 +87,7 @@ router.get("/prochain-numero/:clinicId",  async (req, res) => {
 });
 
 // 🟢 DELETE (agent + président)
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", authMiddleware(["agent", "president"]), async (req, res) => {
   try {
     await Prise.destroy({ where: { id: req.params.id } });
     res.json({ message: "Supprimé ✅" });
@@ -98,7 +98,7 @@ router.delete("/:id", async (req, res) => {
 });
 
 // 🟢 ANNULER (agent + président)
-router.put("/annuler/:id", async (req, res) => {
+router.put("/annuler/:id", authMiddleware(["agent", "president"]), async (req, res) => {
   try {
     const prise = await Prise.findByPk(req.params.id);
 

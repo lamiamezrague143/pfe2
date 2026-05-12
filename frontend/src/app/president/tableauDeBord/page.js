@@ -1,7 +1,7 @@
 "use client";
-
+import ProtectedRoutes from "../../../components/ProtectedRoutes";
 import React, { useState, useEffect } from "react";
-import axios from "axios";
+import { apiFetch } from "../../../lib/api";
 import Link from "next/link";
 import {
   HomeIcon,
@@ -24,7 +24,7 @@ import {
   Activity, Shield, TrendingUp, Eye, DollarSign, Search
 } from 'lucide-react';
 
-const API_URL = "http://localhost:5001/api";
+
 
 // Composant Menu Item moderne (identique à la page archives)
 const MenuItem = ({ icon: Icon, label, href, active, badge }) => (
@@ -172,47 +172,38 @@ export default function TableauDeBord() {
     setTimeout(() => setToast(null), 2500);
   };
 
-  const fetchData = async () => {
-    try {
-      const resSet = await fetch(`${API_URL}/settings`);
-      if (resSet.ok) {
-        const settings = await resSet.json();
-        if (settings.plafond_general) setPlafondGeneral(Number(settings.plafond_general));
-        if (settings.plafond_dentaire) setPlafondDentaire(Number(settings.plafond_dentaire));
-        if (settings.plafond_ophta) setPlafondOphta(Number(settings.plafond_ophta));
-      }
-
-      const resCliniques = await fetch(`${API_URL}/clinics/all`);
-      if (resCliniques.ok) {
-        const allCliniques = await resCliniques.json();
-        setCliniques(allCliniques);
-      }
-
-      const resHis = await fetch(`${API_URL}/prise-en-charge/all`);
-      if (resHis.ok) {
-        const allData = await resHis.json();
-        setHistory(allData);
-      }
-
-      const resDos = await fetch(`${API_URL}/dossiers/liste-generale`);
-      if (resDos.ok) {
-        const allDos = await resDos.json();
-        const currentYear = new Date().getFullYear();
-        setDossiers(
-          allDos.filter(d =>
-            new Date(d.createdAt).getFullYear() === currentYear &&
-            parseFloat(d.montant_avenant || 0) > 0
-          )
-        );
-      }
-    } catch (err) {
-      console.error("Erreur:", err);
-      showToast("❌ Erreur de chargement des données");
-    } finally {
-      setLoading(false);
+ const fetchData = async () => {
+  try {
+    const settings = await apiFetch("/settings");
+    if (settings) {
+      if (settings.plafond_general) setPlafondGeneral(Number(settings.plafond_general));
+      if (settings.plafond_dentaire) setPlafondDentaire(Number(settings.plafond_dentaire));
+      if (settings.plafond_ophta) setPlafondOphta(Number(settings.plafond_ophta));
     }
-  };
 
+    const allCliniques = await apiFetch("/clinics/all");
+    if (allCliniques) setCliniques(allCliniques);
+
+    const allData = await apiFetch("/prise-en-charge/all");
+    if (allData) setHistory(allData);
+
+    const allDos = await apiFetch("/dossiers/liste-generale");
+    if (allDos) {
+      const currentYear = new Date().getFullYear();
+      setDossiers(
+        allDos.filter(d =>
+          new Date(d.createdAt).getFullYear() === currentYear &&
+          parseFloat(d.montant_avenant || 0) > 0
+        )
+      );
+    }
+  } catch (err) {
+    console.error("Erreur:", err);
+    showToast("❌ Erreur de chargement des données");
+  } finally {
+    setLoading(false);
+  }
+};
   useEffect(() => {
     fetchData();
   }, []);
@@ -363,26 +354,23 @@ export default function TableauDeBord() {
 
   const COLORS_BAR = ['#059669', '#10b981', '#34d399', '#6ee7b7', '#a7f3d0'];
 
-  const updatePlafondDB = async (key, value) => {
-    const val = Number(value);
-    if (key === 'plafond_general') setPlafondGeneral(val);
-    if (key === 'plafond_dentaire') setPlafondDentaire(val);
-    if (key === 'plafond_ophta') setPlafondOphta(val);
-    try {
-      const response = await fetch(`${API_URL}/settings/update`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ key, value: String(val) })
-      });
-      if (!response.ok) throw new Error(`Erreur HTTP: ${response.status}`);
-      showToast("✅ Plafond mis à jour");
-      await fetchData();
-    } catch (err) {
-      console.error("❌ Erreur:", err);
-      showToast("❌ Erreur lors de la sauvegarde");
-    }
-  };
-
+const updatePlafondDB = async (key, value) => {
+  const val = Number(value);
+  if (key === 'plafond_general') setPlafondGeneral(val);
+  if (key === 'plafond_dentaire') setPlafondDentaire(val);
+  if (key === 'plafond_ophta') setPlafondOphta(val);
+  try {
+    await apiFetch("/settings/update", {
+      method: "POST",
+      body: JSON.stringify({ key, value: String(val) }),
+    });
+    showToast("✅ Plafond mis à jour");
+    await fetchData();
+  } catch (err) {
+    console.error("❌ Erreur:", err);
+    showToast("❌ Erreur lors de la sauvegarde");
+  }
+};
   const getStatus = (consomme, max) => {
     const ratio = (consomme / max) * 100;
     if (ratio >= 100) return { color: "bg-red-500", text: "PLAFOND ATTEINT", zone: "text-red-600", row: "bg-red-50/30", badge: "🔴" };

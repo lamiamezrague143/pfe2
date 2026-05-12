@@ -44,7 +44,7 @@ const prixPrestationsRoutes = require("./routes/prixPrestationsRoutes");
 const noteRoutes = require("./routes/noteRoutes");
 const archiveRoutes = require('./routes/archiveRoutes');
 const typesprestations = require('./routes/typesprestationsRoutes')
-const loginRoutes = require("./routes/loginRoutes");
+//const loginRoutes = require("./routes/loginRoutes");
 app.use(session({
   secret: 'votre_secret_ummto', // Change ceci par une phrase aléatoire
   resave: false,
@@ -68,7 +68,6 @@ app.use(express.urlencoded({ extended: true }));
 // 2. Utilisation de la route
 app.use('/api/pieces', pieceRoutes);
 
-
 // --- ROUTES API ---
 app.use('/api/typesprestations', typesprestations);
 app.use("/api/prise-en-charge", priseRoutes);
@@ -81,10 +80,10 @@ app.use('/api/etats', etatRoutes);
 app.use('/api/dossiers', dossierRoutes);
 app.use('/api', captchaRoutes);
 app.use("/api/messages", messageRoutes);
-app.use("/api/agents", require("./routes/agentRoutes"));
+app.use("/api/agents", agentRoutes);
 app.use("/api/notes", noteRoutes);
 app.use('/api/archives', archiveRoutes);
-app.use("/api", loginRoutes);
+//app.use("/api", loginRoutes);
 app.use("/api/prix-prestations", prixPrestationsRoutes);
 
 app.get("/api/test", (req, res) => {

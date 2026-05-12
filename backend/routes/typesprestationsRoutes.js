@@ -1,9 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const TypesPrestations = require('../models/TypesPrestations');
+const authMiddleware = require("../middleware/authMiddleware"); // 🔐 IMPORTANT
 
-// 📥 LISTE
-router.get('/', async (req, res) => {
+// 📥 LISTE (président uniquement)
+router.get('/', authMiddleware(["beneficiaire","agent","president"]), async (req, res) => {
   try {
     const data = await TypesPrestations.findAll({
       where: { actif: true }
@@ -15,8 +16,8 @@ router.get('/', async (req, res) => {
   }
 });
 
-// ➕ AJOUT
-router.post("/", async (req, res) => {
+// ➕ AJOUT (président uniquement)
+router.post("/", authMiddleware(["president"]), async (req, res) => {
   try {
     const { nom } = req.body;
 
@@ -31,8 +32,8 @@ router.post("/", async (req, res) => {
   }
 });
 
-// ✏️ UPDATE
-router.put("/:id", async (req, res) => {
+// ✏️ UPDATE (président uniquement)
+router.put("/:id", authMiddleware(["president"]), async (req, res) => {
   try {
     const { nom, actif } = req.body;
 
@@ -47,8 +48,8 @@ router.put("/:id", async (req, res) => {
   }
 });
 
-// 🗑️ DELETE LOGIQUE
-router.delete("/:id", async (req, res) => {
+// 🗑️ DELETE LOGIQUE (président uniquement)
+router.delete("/:id", authMiddleware(["president"]), async (req, res) => {
   try {
     await TypesPrestations.update(
       { actif: false },
@@ -60,8 +61,11 @@ router.delete("/:id", async (req, res) => {
     res.status(500).json({ error: "Erreur delete" });
   }
 });
-router.get("/clinique/:id", (req, res) => {
+
+// 🔍 TEST ROUTE (président uniquement)
+router.get("/clinique/:id", authMiddleware(["president"]), (req, res) => {
   console.log("ROUTE OK - ID:", req.params.id);
   res.json({ test: "route fonctionne" });
 });
+
 module.exports = router;

@@ -1,10 +1,10 @@
 const express = require("express");
 const router = express.Router();
 const Agent = require("../models/Agent");
-//const auth = require("../middleware/authMiddleware"); // 🔐 IMPORTANT
+const authMiddleware = require("../middleware/authMiddleware"); // 🔐 IMPORTANT
 
-// 📥 GET ALL (agent seulement)
-router.get("/",  async (req, res) => {
+// 📥 GET ALL (président uniquement)
+router.get("/", authMiddleware(["president"]), async (req, res) => {
   try {
     const agents = await Agent.findAll();
     res.json(agents);
@@ -13,8 +13,8 @@ router.get("/",  async (req, res) => {
   }
 });
 
-// 📥 GET BY ID
-router.get("/:id",  async (req, res) => {
+// 📥 GET BY ID (président uniquement)
+router.get("/:id", authMiddleware(["president"]), async (req, res) => {
   try {
     const agent = await Agent.findByPk(req.params.id);
     res.json(agent);
@@ -23,8 +23,8 @@ router.get("/:id",  async (req, res) => {
   }
 });
 
-// ➕ CREATE
-router.post("/",  async (req, res) => {
+// ➕ CREATE (président uniquement)
+router.post("/", authMiddleware(["president"]), async (req, res) => {
   try {
     const agent = await Agent.create(req.body);
     res.json(agent);
@@ -33,8 +33,8 @@ router.post("/",  async (req, res) => {
   }
 });
 
-// ✏️ UPDATE
-router.put("/:id",async (req, res) => {
+// ✏️ UPDATE (président uniquement)
+router.put("/:id", authMiddleware(["president"]), async (req, res) => {
   try {
     await Agent.update(
       { nom: req.body.nom },
@@ -47,8 +47,8 @@ router.put("/:id",async (req, res) => {
   }
 });
 
-// 🗑️ DELETE
-router.delete("/:id",  async (req, res) => {
+// 🗑️ DELETE (président uniquement)
+router.delete("/:id", authMiddleware(["president"]), async (req, res) => {
   try {
     await Agent.destroy({
       where: { id: req.params.id }

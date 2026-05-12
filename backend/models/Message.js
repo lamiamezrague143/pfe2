@@ -2,7 +2,7 @@
 
 const { DataTypes } = require("sequelize");
 const { sequelize } = require("../config/db");
-
+const User = require("./User");
 const Message = sequelize.define("Message", {
   id: {
     type: DataTypes.INTEGER,
@@ -36,5 +36,5 @@ const Message = sequelize.define("Message", {
 }, {
   timestamps: true, // createdAt + updatedAt
 });
-
+Message.belongsTo(User, { as: "sender", foreignKey: "senderId" });
 module.exports = Message;

@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
-
+import ProtectedRoutes from "../../components/ProtectedRoutes";
 const API = "http://localhost:5001/api";
 
 const fmt = (n) =>

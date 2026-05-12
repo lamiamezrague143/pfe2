@@ -1,10 +1,10 @@
 const express = require("express");
 const router = express.Router();
 const Note = require("../models/Note");
-//const auth = require("../middleware/authMiddleware"); // 🔐 IMPORTANT
+const authMiddleware = require("../middleware/authMiddleware"); // 🔐 IMPORTANT
 
-// 🟢 GET ALL NOTES (agent + président)
-router.get("/",  async (req, res) => {
+// 🟢 GET ALL NOTES (agent uniquement)
+router.get("/", authMiddleware(["agent"]), async (req, res) => {
   try {
     const notes = await Note.findAll({
       order: [["createdAt", "DESC"]]
@@ -17,8 +17,8 @@ router.get("/",  async (req, res) => {
   }
 });
 
-// 🟢 CREATE NOTE (agent + président)
-router.post("/",async (req, res) => {
+// 🟢 CREATE NOTE (agent uniquement)
+router.post("/", authMiddleware(["agent"]), async (req, res) => {
   try {
     const { titre, contenu, agentNom } = req.body;
 
@@ -35,8 +35,8 @@ router.post("/",async (req, res) => {
   }
 });
 
-// 🟢 UPDATE STATUT (agent + président)
-router.put("/:id",  async (req, res) => {
+// 🟢 UPDATE STATUT (agent uniquement)
+router.put("/:id", authMiddleware(["agent"]), async (req, res) => {
   try {
     const { statut } = req.body;
 
@@ -52,8 +52,8 @@ router.put("/:id",  async (req, res) => {
   }
 });
 
-// 🟢 DELETE NOTE (agent + président)
-router.delete("/:id",async (req, res) => {
+// 🟢 DELETE NOTE (agent uniquement)
+router.delete("/:id", authMiddleware(["agent"]), async (req, res) => {
   try {
     await Note.destroy({
       where: { id: req.params.id }

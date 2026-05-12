@@ -1,13 +1,13 @@
-"use client"; // ✅ Une seule fois, tout en haut !
-
+"use client";
+import ProtectedRoutes from "../../../components/ProtectedRoutes";
 import React, { useState, useEffect, useRef } from "react";
 import { io } from "socket.io-client";
 import { Send, MessageSquare, User, Users, Search, Circle } from "lucide-react";
+import { apiFetch } from "../../../lib/api"; // ← adaptez le chemin
 
 const SOCKET_SERVER_URL = "http://localhost:5001";
 const ADMIN_ID = 999;
 
-// ─── UTILITAIRES ──────────────────────────────────────────────────────────────
 const formatTime = (ts) =>
   ts ? new Date(ts).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "";
 
@@ -26,74 +26,80 @@ export default function AdminMessagesPage() {
   const [input, setInput] = useState("");
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
-  
+
   const socketRef = useRef(null);
   const scrollRef = useRef(null);
-  // On utilise une ref pour selectedUser afin d'y accéder dans l'écouteur socket sans re-render
   const selectedUserRef = useRef(null);
 
   useEffect(() => {
     selectedUserRef.current = selectedUser;
   }, [selectedUser]);
 
-  // ── Initialisation Socket et Fetch ──────────────────────────────────────────
+  // ── Initialisation Socket et Fetch ─────────────────────────────────────────
   useEffect(() => {
-  const socket = io(SOCKET_SERVER_URL, { withCredentials: true });
-  socketRef.current = socket;
+    const socket = io(SOCKET_SERVER_URL, { withCredentials: true });
+    socketRef.current = socket;
 
-  // On crée une fonction isolée pour pouvoir la "débrancher" plus tard
-  const onMessageReceived = (msg) => {
-    const isRelevant = 
-      Number(msg.senderId) === Number(selectedUserRef.current?.userId) || 
-      Number(msg.receiverId) === Number(selectedUserRef.current?.userId);
+    const onMessageReceived = (msg) => {
+      const isRelevant =
+        Number(msg.senderId) === Number(selectedUserRef.current?.userId) ||
+        Number(msg.receiverId) === Number(selectedUserRef.current?.userId);
 
-    if (isRelevant) {
-      setMessages((prev) => {
-        // Optionnel : Éviter les doublons par ID si le serveur renvoie l'ID
-        const exists = prev.find(m => m.id === msg.id);
-        if (exists && msg.id) return prev; 
-        return [...prev, msg];
-      });
-    }
-    // ... reste de ta logique de mise à jour des conversations
-  };
+      if (isRelevant) {
+        setMessages((prev) => {
+          const exists = prev.find((m) => m.id === msg.id);
+          if (exists && msg.id) return prev;
+          return [...prev, msg];
+        });
+      }
+    };
 
-  socket.on("receive_message", onMessageReceived);
+    socket.on("receive_message", onMessageReceived);
 
-  fetchConversations();
+    fetchConversations();
 
-  return () => {
-    // ✅ TRÈS IMPORTANT : On débranche tout ici
-    socket.off("receive_message", onMessageReceived);
-    socket.disconnect();
-  };
-}, []); // On garde le tableau vide pour que ça ne tourne qu'une fois
+    return () => {
+      socket.off("receive_message", onMessageReceived);
+      socket.disconnect();
+    };
+  }, []);
 
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const fetchConversations = async () => {
-    try {
-      const res = await fetch(`${SOCKET_SERVER_URL}/api/messages`);
-      if (!res.ok) throw new Error();
-      const data = await res.json();
+  // ── fetchConversations ─────────────────────────────────────────────────────
+// ✅ APRÈS
+const fetchConversations = async () => {
+  try {
+    const data = await apiFetch("/messages");
+    if (!data) return;
 
-      const map = {};
-      data.forEach((msg) => {
+    const list = Array.isArray(data)
+      ? data
+      : Array.isArray(data?.messages)
+      ? data.messages
+      : Array.isArray(data?.data)
+      ? data.data
+      : [];
+
+    const map = {};
+    list.forEach((msg) => {
         const uid = msg.senderId === ADMIN_ID ? msg.receiverId : msg.senderId;
         if (!map[uid] || new Date(msg.createdAt) > new Date(map[uid].lastTime)) {
-          map[uid] = { 
-            userId: uid, 
-            name: `Utilisateur #${uid}`, 
-            lastMessage: msg.content, 
-            lastTime: msg.createdAt, 
-            unread: 0 
+          map[uid] = {
+            userId: uid,
+            name: `Utilisateur #${uid}`,
+            lastMessage: msg.content,
+            lastTime: msg.createdAt,
+            unread: 0,
           };
         }
       });
 
-      setConversations(Object.values(map).sort((a, b) => new Date(b.lastTime) - new Date(a.lastTime)));
+      setConversations(
+        Object.values(map).sort((a, b) => new Date(b.lastTime) - new Date(a.lastTime))
+      );
     } catch (e) {
       console.error("Erreur conversations:", e);
     } finally {
@@ -101,20 +107,22 @@ export default function AdminMessagesPage() {
     }
   };
 
+  // ── selectUser ─────────────────────────────────────────────────────────────
   const selectUser = async (conv) => {
     setSelectedUser(conv);
-    setConversations(prev => prev.map(c => c.userId === conv.userId ? { ...c, unread: 0 } : c));
+    setConversations((prev) =>
+      prev.map((c) => (c.userId === conv.userId ? { ...c, unread: 0 } : c))
+    );
 
     try {
-      const res = await fetch(`${SOCKET_SERVER_URL}/api/messages?userId=${conv.userId}`);
-      if (!res.ok) throw new Error();
-      const data = await res.json();
+      const data = await apiFetch(`/messages?userId=${conv.userId}`);
       setMessages(Array.isArray(data) ? data : []);
     } catch (e) {
       setMessages([]);
     }
   };
 
+  // ── sendReply ──────────────────────────────────────────────────────────────
   const sendReply = () => {
     if (!input.trim() || !selectedUser || !socketRef.current) return;
 
@@ -122,21 +130,17 @@ export default function AdminMessagesPage() {
       senderId: ADMIN_ID,
       receiverId: selectedUser.userId,
       content: input.trim(),
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
     };
 
-    // On envoie au serveur
     socketRef.current.emit("send_message", newMsg);
-    
-    // Optionnel : on l'ajoute direct à l'UI pour plus de fluidité
-    // setMessages((prev) => [...prev, newMsg]); 
-    
     setInput("");
   };
 
   const filteredConvs = conversations.filter((c) =>
     c.name.toLowerCase().includes(search.toLowerCase())
   );
+
   return (
     <div className="min-h-screen bg-gray-100 font-sans">
       {/* ── HEADER ── */}
@@ -189,17 +193,20 @@ export default function AdminMessagesPage() {
                   key={conv.userId}
                   onClick={() => selectUser(conv)}
                   className={`w-full flex items-start gap-3 px-4 py-3.5 border-b border-gray-50 hover:bg-gray-50 transition text-left ${
-                    selectedUser?.userId === conv.userId ? "bg-green-50 border-l-4 border-l-green-600" : ""
+                    selectedUser?.userId === conv.userId
+                      ? "bg-green-50 border-l-4 border-l-green-600"
+                      : ""
                   }`}
                 >
-                  {/* Avatar */}
                   <div className="w-9 h-9 rounded-full bg-green-100 flex items-center justify-center shrink-0">
                     <User size={16} className="text-green-700" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between">
                       <p className="text-xs font-bold text-gray-800 truncate">{conv.name}</p>
-                      <span className="text-[9px] text-gray-400 shrink-0 ml-1">{formatDate(conv.lastTime)}</span>
+                      <span className="text-[9px] text-gray-400 shrink-0 ml-1">
+                        {formatDate(conv.lastTime)}
+                      </span>
                     </div>
                     <p className="text-[11px] text-gray-500 truncate mt-0.5">{conv.lastMessage}</p>
                   </div>
@@ -217,7 +224,6 @@ export default function AdminMessagesPage() {
         {/* ── ZONE CONVERSATION ── */}
         <main className="flex-1 flex flex-col bg-gray-50">
           {!selectedUser ? (
-            // État vide
             <div className="flex-1 flex flex-col items-center justify-center text-gray-400 gap-3">
               <div className="w-16 h-16 rounded-2xl bg-gray-200 flex items-center justify-center">
                 <MessageSquare size={28} className="text-gray-400" />
@@ -245,7 +251,9 @@ export default function AdminMessagesPage() {
               {/* Messages */}
               <div className="flex-1 overflow-y-auto p-6 space-y-3">
                 {messages.length === 0 ? (
-                  <div className="text-center text-gray-400 text-xs py-10">Aucun message dans cette conversation.</div>
+                  <div className="text-center text-gray-400 text-xs py-10">
+                    Aucun message dans cette conversation.
+                  </div>
                 ) : (
                   messages.map((msg, i) => {
                     const isAdmin = Number(msg.senderId) === Number(ADMIN_ID);
@@ -256,27 +264,31 @@ export default function AdminMessagesPage() {
                             <User size={13} className="text-gray-500" />
                           </div>
                         )}
-                        <div className={`max-w-[70%] px-4 py-2.5 rounded-2xl text-sm shadow-sm ${
-                          isAdmin
-                            ? "bg-green-700 text-white rounded-tr-none"
-                            : "bg-white border border-gray-200 text-gray-800 rounded-tl-none"
-                        }`}>
+                        <div
+                          className={`max-w-[70%] px-4 py-2.5 rounded-2xl text-sm shadow-sm ${
+                            isAdmin
+                              ? "bg-green-700 text-white rounded-tr-none"
+                              : "bg-white border border-gray-200 text-gray-800 rounded-tl-none"
+                          }`}
+                        >
                           <p className="leading-relaxed">{msg.content}</p>
                           {msg.image && (
-    <img 
-      src={msg.image} 
-      alt="Attachement" 
-      className="mt-2 rounded-lg max-w-full h-auto border border-gray-100"
-      onError={(e) => e.target.style.display = 'none'} // Cache si l'image bug
-    />
-  )}
-                          <span className={`text-[9px] mt-1 block ${isAdmin ? "text-green-200 text-right" : "text-gray-400"}`}>
-                            {isAdmin ? "Vous (Admin)" : selectedUser.name} · {formatTime(msg.createdAt || msg.timestamp)}
+                            <img
+                              src={msg.image}
+                              alt="Attachement"
+                              className="mt-2 rounded-lg max-w-full h-auto border border-gray-100"
+                              onError={(e) => (e.target.style.display = "none")}
+                            />
+                          )}
+                          <span
+                            className={`text-[9px] mt-1 block ${
+                              isAdmin ? "text-green-200 text-right" : "text-gray-400"
+                            }`}
+                          >
+                            {isAdmin ? "Vous (Admin)" : selectedUser.name} ·{" "}
+                            {formatTime(msg.createdAt || msg.timestamp)}
                           </span>
-                          
                         </div>
-                        
-                        
                       </div>
                     );
                   })
@@ -289,7 +301,12 @@ export default function AdminMessagesPage() {
                 <textarea
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendReply(); } }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      sendReply();
+                    }
+                  }}
                   placeholder={`Répondre à ${selectedUser.name}...`}
                   rows={1}
                   className="flex-1 bg-gray-100 border-none rounded-2xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-green-600 resize-none"

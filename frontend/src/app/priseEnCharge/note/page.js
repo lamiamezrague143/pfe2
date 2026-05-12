@@ -1,5 +1,6 @@
 "use client";
-
+import ProtectedRoutes from "../../../components/ProtectedRoutes";
+import { apiFetch } from "../../../lib/api";
 import React, { useEffect, useState } from "react";
 import { 
   Plus, Trash2, CheckCircle, Clock, User, StickyNote, 
@@ -8,7 +9,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
-const API = "http://localhost:5001/api/notes";
+
 
 // Couleurs Post-it authentiques
 const postItColors = [
@@ -33,67 +34,71 @@ export default function NotesPage() {
   const [filterStatus, setFilterStatus] = useState("all");
   const [isAddingNote, setIsAddingNote] = useState(false);
 
-  const fetchNotes = async () => {
-    try {
-      const res = await fetch(API);
-      const data = await res.json();
-      // Ajouter une couleur et rotation aléatoire à chaque note
-      const notesWithStyle = data.map((note, index) => ({
+// ✅ APRÈS
+const fetchNotes = async () => {
+  try {
+    const data = await apiFetch("/notes");
+    const list = Array.isArray(data)
+      ? data
+      : Array.isArray(data?.notes)
+      ? data.notes
+      : Array.isArray(data?.data)
+      ? data.data
+      : [];
+
+    if (list.length > 0) {
+      const notesWithStyle = list.map((note, index) => ({
         ...note,
         colorIndex: note.colorIndex || index % postItColors.length,
         rotation: note.rotation || randomRotation(),
       }));
       setNotes(notesWithStyle);
-    } catch (err) {
-      console.error("Erreur chargement notes", err);
-    } finally {
-      setLoading(false);
     }
-  };
+  } catch (err) {
+    console.error("Erreur chargement notes", err);
+  } finally {
+    setLoading(false);
+  }
+};
 
   useEffect(() => { fetchNotes(); }, []);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!form.titre || !form.contenu) return;
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  if (!form.titre || !form.contenu) return;
+  try {
+    await apiFetch("/notes", {
+      method: "POST",
+      body: JSON.stringify({
+        ...form,
+        categorie: "general",
+        colorIndex: Math.floor(Math.random() * postItColors.length),
+        rotation: randomRotation()
+      })
+    });
+    setForm({ titre: "", contenu: "", agentNom: "" });
+    setIsAddingNote(false);
+    fetchNotes();
+  } catch (err) { console.error("Erreur ajout", err); }
+};
+const updateStatus = async (id, statut) => {
+  try {
+    await apiFetch(`/notes/${id}`, {
+      method: "PUT",
+      body: JSON.stringify({ statut })
+    });
+    fetchNotes();
+  } catch (err) { console.error("Erreur update", err); }
+};
 
+const deleteNote = async (id) => {
+  if (confirm("🗑️ Supprimer cette note ?")) {
     try {
-      await fetch(API, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          ...form, 
-          categorie: "general",
-          colorIndex: Math.floor(Math.random() * postItColors.length),
-          rotation: randomRotation()
-        })
-      });
-      setForm({ titre: "", contenu: "", agentNom: "" });
-      setIsAddingNote(false);
+      await apiFetch(`/notes/${id}`, { method: "DELETE" });
       fetchNotes();
-    } catch (err) { console.error("Erreur ajout", err); }
-  };
-
-  const updateStatus = async (id, statut) => {
-    try {
-      await fetch(`${API}/${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ statut })
-      });
-      fetchNotes();
-    } catch (err) { console.error("Erreur update", err); }
-  };
-
-  const deleteNote = async (id) => {
-    if (confirm("🗑️ Supprimer cette note ?")) {
-      try {
-        await fetch(`${API}/${id}`, { method: "DELETE" });
-        fetchNotes();
-      } catch (err) { console.error("Erreur delete", err); }
-    }
-  };
-
+    } catch (err) { console.error("Erreur delete", err); }
+  }
+};
   const filteredNotes = notes.filter(note => {
     const matchesSearch = note.titre.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          note.contenu.toLowerCase().includes(searchTerm.toLowerCase()) ||

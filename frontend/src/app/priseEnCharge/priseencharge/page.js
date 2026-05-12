@@ -2,8 +2,10 @@
 
 import React, { useState, useEffect } from "react";
 import { QRCodeSVG } from 'qrcode.react';
-import axios from "axios";
 
+import ProtectedRoutes from "../../../components/ProtectedRoutes";
+// Ajoutez cette ligne en haut avec les autres imports
+import { apiFetch } from "../../../lib/api";
 // ─── STATUS BADGE ────────────────────────────────────────────────────────────
 function StatusBadge({ status }) {
   const config = {
@@ -415,12 +417,23 @@ const getLastDayOfMonth = () => {
   return lastDay.toLocaleDateString("fr-FR");
 };
 
-  const fetchDemandesEnLigne = async () => {
-    try {
-      const res = await axios.get("http://localhost:5001/api/demandes");
-      setDemandesEnLigne(res.data);
-    } catch (err) { console.error("Erreur chargement demandes:", err); }
-  };
+const fetchDemandesEnLigne = async () => {
+  try {
+    const data = await apiFetch("/demandes");
+    // ✅ Normalisation : extraire le tableau peu importe la forme de la réponse
+    const list = Array.isArray(data)
+      ? data
+      : Array.isArray(data?.demandes)
+      ? data.demandes
+      : Array.isArray(data?.data)
+      ? data.data
+      : [];
+    setDemandesEnLigne(list);
+  } catch (err) {
+    console.error("Erreur chargement demandes:", err);
+    setDemandesEnLigne([]); // ✅ toujours un tableau même en cas d'erreur
+  }
+};
 const fetchPrix = async () => {
   if (!formData.sfEtablissement) {
     alert("Sélectionne une clinique d'abord");
@@ -430,17 +443,8 @@ const fetchPrix = async () => {
   try {
     setShowPrixModal(false); // reset UI propre
     setPrixList([]);
-
-    const res = await fetch(
-      `http://localhost:5001/api/prix-prestations/clinique/${formData.sfEtablissement}`
-    );
-
-    // ❌ Gestion erreur HTTP (important)
-    if (!res.ok) {
-      throw new Error(`HTTP Error: ${res.status}`);
-    }
-
-    const result = await res.json();
+const result = await apiFetch(`/prix-prestations/clinique/${formData.sfEtablissement}`);
+if (!result) throw new Error("Erreur chargement prix");
 
     // ✅ Normalisation robuste des données
 const list =
@@ -470,9 +474,7 @@ console.log("🔍 Premier item reçu:", JSON.stringify(list[0]));
   useEffect(() => {
 const fetchAgents = async () => {
   try {
-    const res = await fetch("http://localhost:5001/api/agents");
-    const result = await res.json();
-
+const result = await apiFetch("/agents");
     const list = Array.isArray(result)
       ? result
       : Array.isArray(result?.data)
@@ -492,8 +494,7 @@ const fetchAgents = async () => {
 useEffect(() => {
   const fetchTypesPrestations = async () => {
     try {
-      const res = await fetch("http://localhost:5001/api/typesprestations");
-      const data = await res.json();
+      const data = await apiFetch("/typesprestations");
 
       console.log("API types prestations :", data);
 
@@ -512,16 +513,19 @@ useEffect(() => {
     const fetchData = async () => {
       try {
         await fetchPlafonds();
-        const [resClinics, resHistory] = await Promise.all([
-          fetch("http://localhost:5001/api/clinics/all"),
-          fetch("http://localhost:5001/api/prise-en-charge/all")
-        ]);
-        if (resClinics.ok) setCliniques(await resClinics.json());
-        if (resHistory.ok) {
-          const allData = await resHistory.json();
-          const currentYear = new Date().getFullYear();
-          setHistory(allData.filter(item => new Date(item.createdAt).getFullYear() === currentYear));
-        }
+        const [clinicsData, historyData] = await Promise.all([
+  apiFetch("/clinics/all"),
+  apiFetch("/prise-en-charge/all")
+]);
+if (clinicsData) setCliniques(clinicsData);
+if (historyData) {
+  const list = Array.isArray(historyData) ? historyData
+    : Array.isArray(historyData?.data) ? historyData.data
+    : Array.isArray(historyData?.prises) ? historyData.prises
+    : [];
+  const currentYear = new Date().getFullYear();
+  setHistory(list.filter(item => new Date(item.createdAt).getFullYear() === currentYear));
+}
       } catch (err) { console.error("ERREUR RÉSEAU:", err); }
     };
     fetchData();
@@ -533,9 +537,8 @@ useEffect(() => {
       const selected = cliniques.find(c => String(c.id) === String(formData.sfEtablissement));
       if (selected && selected.id) {
         try {
-          const res = await fetch(`http://localhost:5001/api/prise-en-charge/prochain-numero/${selected.id}`);
-          if (!res.ok) return;
-          const data = await res.json();
+          const data = await apiFetch(`/prise-en-charge/prochain-numero/${selected.id}`);
+if (!data) return;
           const year = new Date().getFullYear();
           const prochainNumero = data.next || 1;
           setFormData(prev => ({
@@ -558,6 +561,9 @@ useEffect(() => {
 const calculerReste = (user, prestation) => {
   if (!user) return;
 
+  // ✅ AJOUTEZ CETTE LIGNE DE SÉCURITÉ
+  const avenantsArray = Array.isArray(avenants) ? avenants : [];
+
   const prestUpper = (prestation || "").toUpperCase();
   const isDentaire = prestUpper.includes("DENT");
   const isOphta = prestUpper.includes("OPHTA") || prestUpper.includes("OEIL");
@@ -572,52 +578,36 @@ const calculerReste = (user, prestation) => {
   const totalPrises = history
     .filter(item => {
       if (item.annule) return false;
-
-      const sameUser =
-        item.fNom?.toUpperCase() === user.nomComplet.toUpperCase() &&
-        item.fPrenom?.toUpperCase() === user.prenomComplet.toUpperCase();
-
+      const sameUser = item.fNom?.toUpperCase() === user.nomComplet.toUpperCase() &&
+                       item.fPrenom?.toUpperCase() === user.prenomComplet.toUpperCase();
       if (!sameUser) return false;
-
       const itemPrest = item.prestation.toUpperCase();
-
       if (isDentaire) return itemPrest.includes("DENT");
       if (isOphta) return itemPrest.includes("OPHTA") || itemPrest.includes("OEIL");
-
       return !itemPrest.includes("DENT") && !itemPrest.includes("OPHTA") && !itemPrest.includes("OEIL");
     })
     .reduce((sum, item) => sum + parseFloat(item.montantTotal || 0), 0);
 
-const normalize = (str) =>
-  (str || "")
-    .toLowerCase()
-    .replace(/\s+/g, "")
-    .trim();
+  const normalize = (str) => (str || "").toLowerCase().replace(/\s+/g, "").trim();
 
-const totalAvenants = avenants
-  .filter(d => {
-    if (new Date(d.createdAt).getFullYear() !== currentYear) return false;
+  // ✅ UTILISEZ avenantsArray ICI (pas avenants directement)
+  const totalAvenants = avenantsArray
+    .filter(d => {
+      if (new Date(d.createdAt).getFullYear() !== currentYear) return false;
+      const nomDos = normalize(d.nom_beneficiaire);
+      const nomUserNorm = normalize(user.nomComplet);
+      if (!nomDos.includes(nomUserNorm) && !nomUserNorm.includes(nomDos)) return false;
+      if (parseFloat(d.montant_avenant || 0) <= 0) return false;
+      const p = (d.type_prestation || "").toUpperCase();
+      if (isDentaire) return p.includes("DENT");
+      if (isOphta) return p.includes("OPHTA") || p.includes("OEIL");
+      return true;
+    })
+    .reduce((sum, d) => sum + parseFloat(d.montant_avenant || 0), 0);
 
-    const nomDos = normalize(d.nom_beneficiaire);
-    const nomUserNorm = normalize(user.nomComplet);
-
-    // 👉 comparaison plus fiable
-    if (!nomDos.includes(nomUserNorm) && !nomUserNorm.includes(nomDos)) {
-      return false;
-    }
-
-    if (parseFloat(d.montant_avenant || 0) <= 0) return false;
-
-    const p = (d.type_prestation || "").toUpperCase();
-
-    if (isDentaire) return p.includes("DENT");
-    if (isOphta) return p.includes("OPHTA") || p.includes("OEIL");
-
-    return true;
-  })
-  .reduce((sum, d) => sum + parseFloat(d.montant_avenant || 0), 0);
-  console.log("AVENANTS :", avenants);
+  console.log("AVENANTS :", avenantsArray);
   console.log("TOTAL AVENANTS :", totalAvenants);
+  
   const totalConsomme = totalPrises + totalAvenants;
   const solde = plafondApplique - totalConsomme;
 
@@ -631,11 +621,8 @@ useEffect(() => {
   useEffect(() => {
   const fetchAvenants = async () => {
     try {
-      const res = await fetch("http://localhost:5001/api/dossiers/liste-generale");
-      if (res.ok) {
-        const data = await res.json();
-        setAvenants(data);
-      }
+      const data = await apiFetch("/dossiers/liste-generale");
+if (data) setAvenants(data);
     } catch (err) {
       console.error("Erreur avenants:", err);
     }
@@ -658,13 +645,12 @@ useEffect(() => {
   const fetchPlafonds = async () => {
     setLoadingPlafonds(true);
     try {
-      const res = await fetch("http://localhost:5001/api/settings");
-      if (res.ok) {
-        const settings = await res.json();
-        if (settings.plafond_general) setPlafondGeneral(Number(settings.plafond_general));
-        if (settings.plafond_dentaire) setPlafondDentaire(Number(settings.plafond_dentaire));
-        if (settings.plafond_ophta) setPlafondOphta(Number(settings.plafond_ophta));
-      }
+      const settings = await apiFetch("/settings");
+if (settings) {
+  if (settings.plafond_general) setPlafondGeneral(Number(settings.plafond_general));
+  if (settings.plafond_dentaire) setPlafondDentaire(Number(settings.plafond_dentaire));
+  if (settings.plafond_ophta) setPlafondOphta(Number(settings.plafond_ophta));
+}
     } catch (err) { console.error("Erreur chargement plafonds:", err); }
     finally { setLoadingPlafonds(false); }
   };
@@ -672,8 +658,8 @@ useEffect(() => {
   const fetchSuggestions = async (term) => {
     if (term.length > 1) {
       try {
-        const res = await fetch(`http://localhost:5001/api/users/search?term=${term}`);
-        setSuggestions(await res.json());
+        const data = await apiFetch(`/users/search?term=${term}`);
+if (data) setSuggestions(data);
         setShowSuggestions(true);
       } catch (err) { console.error(err); }
     }
@@ -717,17 +703,15 @@ useEffect(() => {
         agentNom: formData.agentNom,
         sfEtablissement: formData.sfEtablissement,
       };
-      const response = await fetch("http://localhost:5001/api/prise-en-charge/", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(dataToSend),
-      });
-      if (response.ok) {
-        alert("✅ Enregistré avec succès !");
-        window.location.reload();
-      } else {
-        const errorData = await response.json();
-        alert("❌ Erreur : " + (errorData.message || errorData.error || "Erreur serveur"));
+      const response = await apiFetch("/prise-en-charge/", {
+  method: "POST",
+  body: JSON.stringify(dataToSend),
+});
+if (response) {
+  alert("✅ Enregistré avec succès !");
+  window.location.reload();
+} else {
+        alert("❌ Erreur lors de l'enregistrement");
       }
     } catch (err) {
       console.error(err);
@@ -752,14 +736,15 @@ useEffect(() => {
 
   const executerDecision = async (id, action, motif, messageClient) => {
     try {
-      const endpoint = action === "valider"
-        ? `http://localhost:5001/api/demandes/valider/${id}`
-        : `http://localhost:5001/api/demandes/rejeter/${id}`;
+      
       const body = action === "valider"
         ? { message_client: messageClient }
         : { motif_refus: motif, message_client: messageClient };
-      const res = await axios.post(endpoint, body);
-      if (res.status !== 200) throw new Error("Réponse serveur invalide");
+      const res = await apiFetch(
+  action === "valider" ? `/demandes/valider/${id}` : `/demandes/rejeter/${id}`,
+  { method: "POST", body: JSON.stringify(body) }
+);
+if (!res) throw new Error("Réponse serveur invalide");
       alert("✅ Action réussie !");
       await fetchDemandesEnLigne();
     } catch (err) {
@@ -771,10 +756,10 @@ useEffect(() => {
   const annulerPrise = async (id) => {
     if (!window.confirm("Voulez-vous annuler cette prise en charge ?")) return;
     try {
-      await axios.put(`http://localhost:5001/api/prise-en-charge/annuler/${id}`);
-      alert("✅ Prise en charge annulée");
-      const res = await fetch("http://localhost:5001/api/prise-en-charge/all");
-      setHistory(await res.json());
+     await apiFetch(`/prise-en-charge/annuler/${id}`, { method: "PUT" });
+alert("✅ Prise en charge annulée");
+const data = await apiFetch("/prise-en-charge/all");
+if (data) setHistory(data);
     } catch (err) {
       console.error(err);
       alert("❌ Erreur lors de l'annulation");

@@ -1,10 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const { Prestation } = require('../models');
-//const auth = require("../middleware/authMiddleware"); // 🔐 IMPORTANT
+const authMiddleware = require("../middleware/authMiddleware"); // 🔐 IMPORTANT
 
-// 🟢 GET ALL PRESTATIONS (président seulement)
-router.get('/all', async (req, res) => {
+// 🟢 GET ALL PRESTATIONS (secrétariat + président)
+router.get('/all', authMiddleware(["secretariat", "president"]), async (req, res) => {
     try {
         const prestations = await Prestation.findAll({
             order: [['createdAt', 'DESC']]
@@ -18,8 +18,8 @@ router.get('/all', async (req, res) => {
     }
 });
 
-// 🟢 AJOUT PRESTATION (président seulement)
-router.post('/ajouter',async (req, res) => {
+// 🟢 AJOUT PRESTATION (secrétariat + président)
+router.post('/ajouter', authMiddleware(["secretariat", "president"]), async (req, res) => {
     console.log("📥 Requête reçue sur /ajouter. Body :", req.body);
 
     try {
@@ -47,8 +47,8 @@ router.post('/ajouter',async (req, res) => {
     }
 });
 
-// 🟢 MODIFIER PRESTATION (président seulement)
-router.put('/modifier/:id', async (req, res) => {
+// 🟢 MODIFIER PRESTATION (secrétariat + président)
+router.put('/modifier/:id', authMiddleware(["secretariat", "president"]), async (req, res) => {
     console.log(`📝 Modification prestation ID: ${req.params.id}`);
 
     try {
@@ -73,8 +73,8 @@ router.put('/modifier/:id', async (req, res) => {
     }
 });
 
-// 🟢 SUPPRIMER PRESTATION (président seulement)
-router.delete('/:id', async (req, res) => {
+// 🟢 SUPPRIMER PRESTATION (secrétariat + président)
+router.delete('/:id', authMiddleware(["secretariat", "president"]), async (req, res) => {
     try {
         const result = await Prestation.destroy({
             where: { id: req.params.id }

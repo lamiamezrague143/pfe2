@@ -3,10 +3,10 @@ const router = express.Router();
 
 const Etat = require('../models/Etat');
 const LigneEtat = require('../models/LigneEtat');
-const auth = require("../middleware/authMiddleware"); // 🔐 IMPORTANT
+const authMiddleware = require("../middleware/authMiddleware"); // 🔐 IMPORTANT
 
-// 🟢 LISTE ETATS (ingénieur + président)
-router.get('/', async (req, res) => {
+// 🟢 LISTE ETATS (ingénieur uniquement)
+router.get('/', authMiddleware(["ingenieur"]), async (req, res) => {
   try {
     const etats = await Etat.findAll({ order: [['createdAt', 'DESC']] });
     res.json(etats);
@@ -15,8 +15,8 @@ router.get('/', async (req, res) => {
   }
 });
 
-// 🟢 CREATE ETAT (ingénieur seulement)
-router.post('/', async (req, res) => {
+// 🟢 CREATE ETAT (ingénieur uniquement)
+router.post('/', authMiddleware(["ingenieur"]), async (req, res) => {
   const { lignes, ...etatData } = req.body;
 
   try {
@@ -41,8 +41,8 @@ router.post('/', async (req, res) => {
   }
 });
 
-// 🟢 GET LIGNES (ingénieur + président)
-router.get('/:id/lignes', async (req, res) => {
+// 🟢 GET LIGNES (ingénieur uniquement)
+router.get('/:id/lignes', authMiddleware(["ingenieur"]), async (req, res) => {
   try {
     const lignes = await LigneEtat.findAll({
       where: { etatId: req.params.id }
@@ -54,8 +54,8 @@ router.get('/:id/lignes', async (req, res) => {
   }
 });
 
-// 🟢 UPDATE ETAT (ingénieur seulement)
-router.put('/:id',  async (req, res) => {
+// 🟢 UPDATE ETAT (ingénieur uniquement)
+router.put('/:id', authMiddleware(["ingenieur"]), async (req, res) => {
   const { lignes, ...etatData } = req.body;
 
   try {
@@ -83,8 +83,8 @@ router.put('/:id',  async (req, res) => {
   }
 });
 
-// 🟢 DELETE ETAT (ingénieur seulement)
-router.delete('/:id',  async (req, res) => {
+// 🟢 DELETE ETAT (ingénieur uniquement)
+router.delete('/:id', authMiddleware(["ingenieur"]), async (req, res) => {
   try {
     await Etat.destroy({
       where: { id: req.params.id }

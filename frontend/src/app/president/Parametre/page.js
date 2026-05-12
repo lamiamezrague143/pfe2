@@ -1,5 +1,5 @@
 "use client";
-
+import ProtectedRoutes from "../../../components/ProtectedRoutes";
 import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import {
@@ -24,7 +24,7 @@ import {
   DocumentTextIcon,
 } from '@heroicons/react/24/outline';
 
-const API_URL = "http://localhost:5001/api";
+import { apiFetch } from "../../../lib/api";
 
 // Composant Menu Item moderne (identique aux autres pages)
 const MenuItem = ({ icon: Icon, label, href, active, badge }) => (
@@ -90,131 +90,96 @@ export default function ParametresPage() {
     setTimeout(() => setToast(null), 2500);
   };
 
-  const fetchTypes = async () => {
-    try {
-      const res = await fetch(`${API_URL}/typesprestations`);
-      const data = await res.json();
-      setTypes(Array.isArray(data) ? data : data.types || data.data || []);
-    } catch (error) {
-      showToast("Erreur lors du chargement des prestations", "error");
-    }
-  };
+ const fetchTypes = async () => {
+  try {
+    const data = await apiFetch("/typesprestations");
+    setTypes(Array.isArray(data) ? data : data?.types || data?.data || []);
+  } catch (error) {
+    showToast("Erreur lors du chargement des prestations", "error");
+  }
+};
 
-  const fetchAgents = async () => {
-    try {
-      const res = await fetch(`${API_URL}/agents`);
-      const data = await res.json();
-      setAgents(Array.isArray(data) ? data : data.agents || []);
-    } catch (error) {
-      showToast("Erreur lors du chargement des agents", "error");
-    }
-  };
+const fetchAgents = async () => {
+  try {
+    const data = await apiFetch("/agents");
+    setAgents(Array.isArray(data) ? data : data?.agents || []);
+  } catch (error) {
+    showToast("Erreur lors du chargement des agents", "error");
+  }
+};
+
+const saveType = async (e) => {
+  e.preventDefault();
+  if (!formType.nom.trim()) { showToast("Le nom de la prestation est requis", "error"); return; }
+  setLoading(true);
+  const isEdit = !!formType.id;
+  try {
+    await apiFetch(isEdit ? `/typesprestations/${formType.id}` : "/typesprestations", {
+      method: isEdit ? "PUT" : "POST",
+      body: JSON.stringify({ nom: formType.nom })
+    });
+    setFormType({ nom: "", id: null });
+    setShowTypeModal(false);
+    await fetchTypes();
+    showToast(isEdit ? "Prestation modifiée avec succès" : "Prestation ajoutée avec succès");
+  } catch (error) {
+    showToast("Erreur lors de l'enregistrement", "error");
+  } finally { setLoading(false); }
+};
+
+
+
+
+
+
 
   useEffect(() => {
     if (tab === "prestations") fetchTypes();
     if (tab === "agents") fetchAgents();
   }, [tab]);
 
-  const saveType = async (e) => {
-    e.preventDefault();
-    if (!formType.nom.trim()) {
-      showToast("Le nom de la prestation est requis", "error");
-      return;
-    }
-    setLoading(true);
 
-    const isEdit = !!formType.id;
+const deleteType = async (id, nom) => {
+  if (!confirm(`Supprimer la prestation "${nom}" ?`)) return;
+  setLoading(true);
+  try {
+    await apiFetch(`/typesprestations/${id}`, { method: "DELETE" });
+    await fetchTypes();
+    showToast("Prestation supprimée avec succès");
+  } catch (error) {
+    showToast("Erreur lors de la suppression", "error");
+  } finally { setLoading(false); }
+};
+const saveAgent = async (e) => {
+  e.preventDefault();
+  if (!formAgent.nom.trim()) { showToast("Le nom de l'agent est requis", "error"); return; }
+  setLoading(true);
+  const isEdit = !!formAgent.id;
+  try {
+    await apiFetch(isEdit ? `/agents/${formAgent.id}` : "/agents", {
+      method: isEdit ? "PUT" : "POST",
+      body: JSON.stringify({ nom: formAgent.nom })
+    });
+    setFormAgent({ nom: "", id: null });
+    setShowAgentModal(false);
+    await fetchAgents();
+    showToast(isEdit ? "Agent modifié avec succès" : "Agent ajouté avec succès");
+  } catch (error) {
+    showToast("Erreur lors de l'enregistrement", "error");
+  } finally { setLoading(false); }
+};
 
-    try {
-      await fetch(
-        isEdit
-          ? `${API_URL}/typesprestations/${formType.id}`
-          : `${API_URL}/typesprestations`,
-        {
-          method: isEdit ? "PUT" : "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ nom: formType.nom })
-        }
-      );
-
-      setFormType({ nom: "", id: null });
-      setShowTypeModal(false);
-      await fetchTypes();
-      showToast(isEdit ? "Prestation modifiée avec succès" : "Prestation ajoutée avec succès");
-    } catch (error) {
-      showToast("Erreur lors de l'enregistrement", "error");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const deleteType = async (id, nom) => {
-    if (!confirm(`Supprimer la prestation "${nom}" ?`)) return;
-    setLoading(true);
-
-    try {
-      await fetch(`${API_URL}/typesprestations/${id}`, {
-        method: "DELETE"
-      });
-      await fetchTypes();
-      showToast("Prestation supprimée avec succès");
-    } catch (error) {
-      showToast("Erreur lors de la suppression", "error");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const saveAgent = async (e) => {
-    e.preventDefault();
-    if (!formAgent.nom.trim()) {
-      showToast("Le nom de l'agent est requis", "error");
-      return;
-    }
-    setLoading(true);
-
-    const isEdit = !!formAgent.id;
-
-    try {
-      await fetch(
-        isEdit
-          ? `${API_URL}/agents/${formAgent.id}`
-          : `${API_URL}/agents`,
-        {
-          method: isEdit ? "PUT" : "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ nom: formAgent.nom })
-        }
-      );
-
-      setFormAgent({ nom: "", id: null });
-      setShowAgentModal(false);
-      await fetchAgents();
-      showToast(isEdit ? "Agent modifié avec succès" : "Agent ajouté avec succès");
-    } catch (error) {
-      showToast("Erreur lors de l'enregistrement", "error");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const deleteAgent = async (id, nom) => {
-    if (!confirm(`Supprimer l'agent "${nom}" ?`)) return;
-    setLoading(true);
-
-    try {
-      await fetch(`${API_URL}/agents/${id}`, {
-        method: "DELETE"
-      });
-      await fetchAgents();
-      showToast("Agent supprimé avec succès");
-    } catch (error) {
-      showToast("Erreur lors de la suppression", "error");
-    } finally {
-      setLoading(false);
-    }
-  };
-
+const deleteAgent = async (id, nom) => {
+  if (!confirm(`Supprimer l'agent "${nom}" ?`)) return;
+  setLoading(true);
+  try {
+    await apiFetch(`/agents/${id}`, { method: "DELETE" });
+    await fetchAgents();
+    showToast("Agent supprimé avec succès");
+  } catch (error) {
+    showToast("Erreur lors de la suppression", "error");
+  } finally { setLoading(false); }
+};
   const filteredTypes = (types || []).filter(t =>
     t.nom?.toLowerCase().includes(searchTerm.toLowerCase())
   );

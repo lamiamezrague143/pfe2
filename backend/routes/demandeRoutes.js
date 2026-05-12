@@ -6,19 +6,19 @@ const Demande = require('../models/Demande');
 const Dossier = require('../models/Dossier'); 
 const PieceDossier = require('../models/PieceDossier'); 
 const Prise = require('../models/Prise');
-// ----------------------------------
 
 // Upload Cloudinary
 const { upload } = require('../config/cloudinary');
 
+// Middleware d'authentification
+const authMiddleware = require("../middleware/authMiddleware"); // 🔐 IMPORTANT
 
 // ─────────────────────────────
-// 1. AJOUT DEMANDE
+// 1. AJOUT DEMANDE (CLIENT / BÉNÉFICIAIRE)
 // ─────────────────────────────
-router.post('/ajouter', upload.array('ordonnance', 10), async (req, res) => {
+router.post('/ajouter', authMiddleware(["beneficiaire","agent","president"]),upload.array('ordonnance', 10), async (req, res) => {
   try {
-    const { nom_beneficiaire, type_prestation, fonction, sexe, telephone, date_naissance,  lieu_naissance,     // ✅ AJOUT
-  etablissement   } = req.body;
+    const { nom_beneficiaire, type_prestation, fonction, sexe, telephone, date_naissance, lieu_naissance, etablissement } = req.body;
 
     console.log("BODY:", req.body);
     console.log("FILES:", req.files);
@@ -33,34 +33,35 @@ router.post('/ajouter', upload.array('ordonnance', 10), async (req, res) => {
       }));
     }
 
-const nouvelleDemande = await Demande.create({
-  userId: 1, // ⚠️ remplace par l'utilisateur connecté
-  nom_beneficiaire,
-  type_prestation,
-  fonction,
-  sexe,
-  telephone,
-  date_naissance,
- lieu_naissance,
+    const nouvelleDemande = await Demande.create({
+      userId: req.user.id, // ⚠️ remplace par l'utilisateur connecté (bénéficiaire)
+      nom_beneficiaire,
+      type_prestation,
+      fonction,
+      sexe,
+      telephone,
+      date_naissance,
+      lieu_naissance,
       etablissement,
-  pieces: piecesData,
-  statut: "En attente"
-});
+      pieces: piecesData,
+      statut: "En attente"
+    });
+
     res.status(201).json(nouvelleDemande);
 
   } catch (err) {
     console.error("❌ ERREUR:", err);
-
     res.status(500).json({
       message: "Erreur enregistrement BDD",
       error: err.message
     });
   }
 });
+
 // ─────────────────────────────
-// 2. VALIDER DEMANDE
+// 2. VALIDER DEMANDE (AGENT)
 // ─────────────────────────────
-router.post('/valider/:id', async (req, res) => {
+router.post('/valider/:id', authMiddleware(["agent","president"]), async (req, res) => {
   const t = await sequelize.transaction();
 
   try {
@@ -73,10 +74,7 @@ router.post('/valider/:id', async (req, res) => {
 
     // Numéro dossier
     const count = await Dossier.count({ transaction: t });
-
-    const num_sequence = `${new Date().getFullYear()}-${(count + 1)
-      .toString()
-      .padStart(3, '0')}`;
+    const num_sequence = `${new Date().getFullYear()}-${(count + 1).toString().padStart(3, '0')}`;
 
     // Création dossier
     const dossier = await Dossier.create({
@@ -86,7 +84,7 @@ router.post('/valider/:id', async (req, res) => {
       fonction: demande.fonction
     }, { transaction: t });
 
-    // ✅ Gestion SAFE de pieces (IMPORTANT)
+    // Gestion SAFE des pieces
     let pieces = [];
 
     try {
@@ -100,7 +98,6 @@ router.post('/valider/:id', async (req, res) => {
       pieces = [];
     }
 
-    // Transformation sécurisée
     const formattedPieces = pieces
       .filter(p => p && p.nom && p.data)
       .map(p => ({
@@ -110,12 +107,10 @@ router.post('/valider/:id', async (req, res) => {
         dossierId: dossier.id
       }));
 
-    // Insertion en base
     if (formattedPieces.length > 0) {
       await PieceDossier.bulkCreate(formattedPieces, { transaction: t });
     }
 
-    // Mise à jour statut
     demande.statut = "Validée";
     await demande.save({ transaction: t });
 
@@ -128,9 +123,7 @@ router.post('/valider/:id', async (req, res) => {
 
   } catch (err) {
     await t.rollback();
-
     console.error("🔥 ERREUR VALIDER:", err);
-
     return res.status(500).json({
       message: "Erreur serveur",
       error: err.message
@@ -138,16 +131,10 @@ router.post('/valider/:id', async (req, res) => {
   }
 });
 
-
 // ─────────────────────────────
-// 3. LISTE DEMANDES (SANS pièces) ✅
-/*
-💥 IMPORTANT : on ne récupère PAS `pieces`
-→ évite l’erreur mémoire MySQL
-*/
+// 3. LISTE DEMANDES (AGENT)
 // ─────────────────────────────
-
-router.get('/', async (req, res) => {
+router.get('/', authMiddleware(["agent", "beneficiaire","president"]), async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 20;
     const offset = parseInt(req.query.offset) || 0;
@@ -178,10 +165,11 @@ router.get('/', async (req, res) => {
     });
   }
 });
+
 // ─────────────────────────────
-// 4. RÉCUPÉRER UNE DEMANDE (AVEC pièces)
+// 4. RÉCUPÉRER UNE DEMANDE AVEC PIÈCES (AGENT)
 // ─────────────────────────────
-router.get('/:id', async (req, res) => {
+router.get('/:id', authMiddleware(["agent","president"]), async (req, res) => {
   try {
     const demande = await Demande.findByPk(req.params.id);
 
@@ -199,15 +187,14 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-
 // ─────────────────────────────
-// 5. REJETER DEMANDE
+// 5. REJETER DEMANDE (AGENT)
 // ─────────────────────────────
-router.post('/rejeter/:id', async (req, res) => {
+router.post('/rejeter/:id', authMiddleware(["agent",,"president"]), async (req, res) => {
   try {
-    const { motif } = req.body;
-
-    if (!motif || motif.trim() === "") {
+   const { motif_refus, motif } = req.body;
+const motifFinal = motif_refus || motif;
+if (!motifFinal || motifFinal.trim() === "") {
       return res.status(400).json({
         message: "Le motif est obligatoire"
       });
@@ -219,9 +206,8 @@ router.post('/rejeter/:id', async (req, res) => {
       return res.status(404).json({ message: "Demande introuvable" });
     }
 
-    // Mise à jour propre
-    demande.message_admin = motif;
-    demande.motif_refus = motif;
+demande.message_admin = motifFinal;
+demande.motif_refus = motifFinal;
     demande.statut = "Rejetée";
 
     await demande.save();
@@ -232,19 +218,21 @@ router.post('/rejeter/:id', async (req, res) => {
 
   } catch (err) {
     console.error("🔥 ERREUR REJET:", err);
-
     return res.status(500).json({
       message: "Erreur serveur",
       error: err.message
     });
   }
 });
-router.post('/submit-dossier', async (req, res) => {
+
+// ─────────────────────────────
+// 6. SUBMIT DOSSIER (AGENT)
+// ─────────────────────────────
+router.post('/submit-dossier', authMiddleware(["agent","president"]), async (req, res) => {
   try {
     const { captchaInput, pNom, pPrenom, fonction, type_prestation, montantTotal } = req.body;
 
-    // --- ÉTAPE 1 : LA BARRIÈRE CAPTCHA ---
-    // On vérifie si le captcha existe et s'il correspond (en minuscule)
+    // Vérification captcha
     if (!req.session.captcha || captchaInput.toLowerCase() !== req.session.captcha) {
       return res.status(400).json({ 
         success: false, 
@@ -252,26 +240,19 @@ router.post('/submit-dossier', async (req, res) => {
       });
     }
 
-    // --- ÉTAPE 2 : LOGIQUE MÉTIER (APRÈS VALIDATION) ---
-    
-    // Une fois validé, on supprime le captcha pour éviter qu'il soit réutilisé
     req.session.captcha = null;
 
-    // Création de la demande dans MySQL via Sequelize
     const nouvelleDemande = await Prise.create({
-      
-  ref: "REF-" + Date.now(),
-  sfEtablissement: 1, // à adapter
-  agentNom: "Admin",  // ou req.user.nom
-
-  pNom,
-  pPrenom,
-  fonction,
-  type_prestation,
-  montantTotal,
-  statut: 'Active'
-});
-    
+      ref: "REF-" + Date.now(),
+      sfEtablissement: 1,
+      agentNom: req.user?.nom || "Admin",
+      pNom,
+      pPrenom,
+      fonction,
+      type_prestation,
+      montantTotal,
+      statut: 'Active'
+    });
 
     res.status(201).json({
       success: true,
@@ -284,7 +265,5 @@ router.post('/submit-dossier', async (req, res) => {
     res.status(500).json({ success: false, message: "Erreur interne du serveur." });
   }
 });
-// ─────────────────────────────
-// EXPORT
-// ─────────────────────────────
+
 module.exports = router;

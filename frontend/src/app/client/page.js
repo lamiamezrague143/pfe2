@@ -1,12 +1,13 @@
 "use client";
+import ProtectedRoutes from "../../components/ProtectedRoutes";
 import React, { useState, useEffect, useRef } from "react";
-import axios from "axios";
+import { apiFetch } from "../../lib/api";
 import { io } from "socket.io-client";
 import {
   Send, Clock, CheckCircle, XCircle, MessageSquare,
   FileText, Upload, X, Paperclip, Eye, User, RefreshCw
 } from "lucide-react";
-
+import ChatPanel from "../../components/ChatPanel";// adapte le chemin selon où tu mets le fichier
 const API_BASE          = "http://localhost:5001/api";
 const SOCKET_SERVER_URL = "http://localhost:5001";
 const CURRENT_USER_ID   = 1; // ← Remplace par l'ID depuis ton Auth
@@ -132,221 +133,7 @@ function PiecesModal({ pieces, onClose }) {
 
 
 // ─── CHAT PANEL ───────────────────────────────────────────────────────────────
-function ChatPanel({ user }) {
-  const [messages, setMessages] = useState([]);
-  const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [image, setImage] = useState(null);
-  const fileInputRef = useRef(null);
-  const socketRef = useRef(null);
-  const scrollRef = useRef(null);
-  const [preview, setPreview] = useState(null);
-  const currentUserId = user?.id;
-  
-  // 🔌 Connexion socket + historique
-  useEffect(() => {
-    socketRef.current = io(SOCKET_SERVER_URL, {
-      withCredentials: true,
-    });
 
-    // 📩 Réception des messages
-    socketRef.current.on("receive_message", (data) => {
-      console.log("Message reçu:", data);
-
-      setMessages((prev) => {
-        if (prev.some((m) => m.id === data.id)) return prev;
-        return [...prev, data];
-      });
-    });
-
-    // 📜 Charger historique
-    fetch(`${SOCKET_SERVER_URL}/api/messages`)
-      .then((res) => res.json())
-      .then((data) => {
-        setMessages(Array.isArray(data) ? data : []);
-      })
-      .catch((err) => console.error("Erreur historique:", err))
-      .finally(() => setLoading(false));
-
-    return () => {
-      socketRef.current?.disconnect();
-    };
-  }, []);
-
-  // 📜 Scroll automatique
-  useEffect(() => {
-    scrollRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
-
-  // 📤 Envoyer message
-  const sendMessage = async () => {
-    if (!input.trim() && !image) return;
-
-    const formData = new FormData();
-    formData.append("senderId", currentUserId);
-    formData.append("receiverId", 2);
-    formData.append("content", input || "");
-
-    if (image) {
-      formData.append("image", image);
-    }
-
-    try {
-      await axios.post(`${API_BASE}/messages`, formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
-
-      // ✅ CORRECTION : on ne fait plus socketRef.current.emit("send_message", ...)
-      // Le serveur broadcaste lui-même via socket → évite le double message
-
-      setInput("");
-      setPreview(null);
-      setImage(null);
-    } catch (err) {
-      console.error("Erreur envoi message:", err);
-    }
-  };
-
-  // ⏰ format heure
-  const formatTime = (ts) =>
-    ts
-      ? new Date(ts).toLocaleTimeString("fr-FR", {
-          hour: "2-digit",
-          minute: "2-digit",
-        })
-      : "";
-
-  if (loading) return <p>Chargement...</p>;
-
-  return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden flex flex-col h-[600px]">
-      {/* Header */}
-      <div className="p-4 bg-green-700 text-white flex items-center gap-3">
-        <MessageSquare size={20} />
-        <div>
-          <h2 className="font-bold text-sm">Assistance COS UMMTO</h2>
-          <p className="text-[10px] text-green-100 italic">Réponse en temps réel</p>
-        </div>
-        <span className="ml-auto flex items-center gap-1.5 text-[10px] font-bold bg-white/20 px-2 py-1 rounded-full">
-          <span className="w-1.5 h-1.5 rounded-full bg-green-300 animate-pulse" />
-          En ligne
-        </span>
-      </div>
-
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 bg-gray-50 space-y-3">
-        {loading ? (
-          <div className="flex justify-center items-center h-full text-gray-400">
-            <div className="animate-spin w-5 h-5 border-2 border-green-500 border-t-transparent rounded-full" />
-          </div>
-        ) : (
-          <>
-            {messages.length === 0 && (
-              <div className="flex justify-start">
-                <div className="bg-white border border-gray-200 p-3 rounded-2xl rounded-tl-none shadow-sm max-w-[80%]">
-                  <p className="text-sm text-gray-700">Bonjour ! Comment pouvons-nous vous aider aujourd'hui ?</p>
-                  <span className="text-[9px] text-gray-400 mt-1 block">Support</span>
-                </div>
-              </div>
-            )}
-
-            {messages.map((msg, i) => {
-              const isMine = Number(msg.senderId) === Number(currentUserId);
-              return (
-                <div key={msg.id || i} className={`flex ${isMine ? "justify-end" : "justify-start"}`}>
-                  {!isMine && (
-                    <div className="w-7 h-7 rounded-full bg-green-100 flex items-center justify-center mr-2 shrink-0 self-end">
-                      <User size={13} className="text-green-700" />
-                    </div>
-                  )}
-                  <div className={`max-w-[75%] px-4 py-2.5 rounded-2xl text-sm shadow-sm ${
-                    isMine
-                      ? "bg-green-700 text-white rounded-tr-none"
-                      : "bg-white border border-gray-200 text-gray-800 rounded-tl-none"
-                  }`}>
-                    {msg.content && (
-                      <p className="leading-relaxed">{msg.content}</p>
-                    )}
-                    {msg.image && (
-                      <div className="mt-2">
-                        <img
-                          src={msg.image}
-                          alt="image"
-                          className="rounded-lg max-w-full max-h-60 cursor-pointer"
-                          onClick={() => window.open(msg.image, "_blank")}
-                        />
-                      </div>
-                    )}
-                    <span className={`text-[9px] mt-1 block ${isMine ? "text-green-200 text-right" : "text-gray-400"}`}>
-                      {isMine ? "Vous" : "Support"} · {formatTime(msg.createdAt || msg.timestamp)}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-            <div ref={scrollRef} />
-          </>
-        )}
-      </div>
-
-      {/* Input */}
-      <div className="p-3 bg-white border-t border-gray-100 flex gap-2 items-center">
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendMessage()}
-          placeholder="Écrivez votre message..."
-          className="flex-1 bg-gray-100 border-none rounded-full px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-green-600"
-        />
-        <button
-          onClick={sendMessage}
-          disabled={!input.trim() && !image}
-          className="w-10 h-10 bg-green-700 text-white rounded-full flex items-center justify-center hover:bg-green-800 transition shadow-md disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          <Send size={15} />
-        </button>
-        <input
-          type="file"
-          accept="image/*"
-          ref={fileInputRef}
-          onChange={(e) => {
-            const file = e.target.files[0];
-            setImage(file);
-            if (file) {
-              setPreview(URL.createObjectURL(file));
-            }
-          }}
-          className="hidden"
-        />
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center"
-        >
-          <Paperclip size={16} />
-        </button>
-        {preview && (
-          <div className="relative w-20 h-20 mb-2">
-            <img
-              src={preview}
-              alt="preview"
-              className="w-full h-full object-cover rounded-lg border"
-            />
-            <button
-              onClick={() => {
-                setPreview(null);
-                setImage(null);
-              }}
-              className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center text-xs"
-            >
-              <X size={12} />
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
 
 // ─── PAGE PRINCIPALE ──────────────────────────────────────────────────────────
 export default function DemandePage() {
@@ -389,16 +176,8 @@ export default function DemandePage() {
   useEffect(() => {
   const fetchProfile = async () => {
     try {
-      const token = localStorage.getItem("token");
-
-const USERS_API = "http://localhost:5001/api/users";
-
-const res = await axios.get(`${USERS_API}/me`, {
-  headers: {
-    Authorization: `Bearer ${token}`
-  }
-});
-      setUserData(res.data);
+const data = await apiFetch("/users/me");
+if (data) setUserData(data);
     } catch (err) {
       console.error("Erreur profil:", err);
     }
@@ -407,66 +186,85 @@ const res = await axios.get(`${USERS_API}/me`, {
   fetchProfile();
 }, []);
   const fetchDemandes = async () => {
-    setFetchLoading(true);
-    try { const r = await axios.get(`${API_BASE}/demandes`); setDemandes(r.data);
-    console.log("API_BASE =", API_BASE); }
-    catch (e) { console.error(e); }
-    finally { setFetchLoading(false); }
-  };
-
+  setFetchLoading(true);
+  try {
+    const data = await apiFetch("/demandes");
+    console.log("🔍 Réponse brute API:", data); // ← ajoute ça
+    const list = Array.isArray(data) ? data
+      : Array.isArray(data?.demandes) ? data.demandes
+      : Array.isArray(data?.data) ? data.data
+      : [];
+    console.log("📋 Liste parsée:", list); // ← et ça
+    setDemandes(list);
+  } catch (e) {
+    console.error("❌ Erreur fetch demandes:", e);
+  } finally {
+    setFetchLoading(false);
+  }
+};
   useEffect(() => { if (activeTab === "list") fetchDemandes(); }, [activeTab]);
-  useEffect(() => {
+useEffect(() => {
   const fetchTypes = async () => {
     try {
-      const res = await fetch("http://localhost:5001/api/typesprestations");
-      const data = await res.json();
-      setTypesPrestations(data);
-    } catch (err) {
+      const data = await apiFetch("/typesprestations");
+setTypesPrestations(Array.isArray(data) ? data : data?.data || []);
+} catch (err) {
       console.error("Erreur chargement prestations:", err);
+      setTypesPrestations([]); // évite le crash
     }
   };
-
   fetchTypes();
 }, []);
 useEffect(() => {
   const fetchClinics = async () => {
     try {
-      const res = await fetch("http://localhost:5001/api/clinics/all");
-      const data = await res.json();
-      setListeCliniques(data);
+     const data = await apiFetch("/clinics/all");
+setListeCliniques(Array.isArray(data) ? data : data?.data || []);
     } catch (err) {
       console.error(err);
+      setListeCliniques([]);
     }
   };
-
   fetchClinics();
 }, []);
-  const handleSubmit = async () => {
-    if (!prenom.trim() || !nom.trim() || !prestation || fichiers.length === 0) {
-      setSubmitMsg({ text: "⚠️ Remplis tous les champs obligatoires et ajoute au moins un fichier.", type: "error" });
-      return;
-    }
-    setSubmitLoading(true);
-    const fd = new FormData();
-    fd.append("nom_beneficiaire", `${prenom} ${nom}`);
-    fd.append("type_prestation", prestation);
-    fd.append("fonction", fonction || "Personnel");
-    fd.append("sexe", sexe);
-    fd.append("telephone", telephone);
-    fd.append("date_naissance", dateNaiss);
-    fd.append("lieu_naissance", lieuNaissance);
-    fd.append("etablissement", etablissement);
-    fd.append("captcha", userCaptcha);
-    fichiers.forEach((f) => fd.append("ordonnance", f));
-    try {
-      await axios.post(`${API_BASE}/demandes/ajouter`, fd);
-      setSubmitMsg({ text: "✅ Dossier envoyé avec succès !", type: "success" });
-      resetForm(); refreshCaptcha();
-    } catch (err) {
-      setSubmitMsg({ text: err.response?.data?.message || "Erreur serveur.", type: "error" });
-      refreshCaptcha();
-    } finally { setSubmitLoading(false); }
-  };
+const handleSubmit = async () => {
+  if (!prenom.trim() || !nom.trim() || !prestation || fichiers.length === 0) {
+    setSubmitMsg({ text: "⚠️ Remplis tous les champs obligatoires et ajoute au moins un fichier.", type: "error" });
+    return;
+  }
+
+  setSubmitLoading(true);
+  setSubmitMsg({ text: "", type: "" });
+
+  const fd = new FormData();
+  fd.append("nom_beneficiaire", `${prenom} ${nom}`);
+  fd.append("type_prestation", prestation);
+  fd.append("fonction", fonction || "Personnel");
+  fd.append("sexe", sexe);
+  fd.append("telephone", telephone);
+  fd.append("date_naissance", dateNaiss);
+  fd.append("lieu_naissance", lieuNaissance);
+  fd.append("etablissement", etablissement);
+  fd.append("captcha", userCaptcha);
+  fichiers.forEach((f) => fd.append("ordonnance", f));
+
+  try {
+    await apiFetch("/demandes/ajouter", {
+      method: "POST",
+      body: fd, // ✅ FormData, pas JSON.stringify
+    });
+
+    setSubmitMsg({ text: "✅ Dossier envoyé avec succès !", type: "success" });
+    resetForm();
+    refreshCaptcha();
+  } catch (err) {
+    console.error("Erreur soumission:", err);
+    setSubmitMsg({ text: "❌ Erreur serveur.", type: "error" });
+    refreshCaptcha();
+  } finally {
+    setSubmitLoading(false);
+  }
+};
 
   const nbEnAttente = demandes.filter((d) => d.statut === "En attente").length;
   const nbValidees  = demandes.filter((d) => d.statut === "Validée").length;
@@ -757,7 +555,7 @@ try {
         )}
 
         {/* ── MESSAGERIE ── */}
-        {activeTab === "chat" && <ChatPanel user={{ id: CURRENT_USER_ID }} />}
+        {activeTab === "chat" && <ChatPanel />}
 
         {/* ── PROFIL ── */}
         {activeTab === "profil" && (
