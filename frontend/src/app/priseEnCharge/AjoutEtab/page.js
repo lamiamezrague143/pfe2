@@ -1,26 +1,20 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { PlusCircle, List, MapPin, Phone, Mail, Stethoscope, Trash2, ShieldCheck, Activity } from "lucide-react";
+import { PlusCircle, List, MapPin, Phone, Mail, Trash2, ShieldCheck } from "lucide-react";
 import ProtectedRoutes from "../../../components/ProtectedRoutes";
-import { apiFetch } from "../../../lib/api"; // ← adaptez le chemin
+import { apiFetch } from "../../../lib/api";
 
 export default function AddClinicForm() {
   const [vueActive, setVueActive] = useState("formulaire");
   const [listeCliniques, setListeCliniques] = useState([]);
   const [formData, setFormData] = useState({
-    nom: "",
-    type: "Clinique",
-    adresse: "",
-    telephone: [""],
-    email: "",
-    services: []
+    nom: "", type: "Clinique", adresse: "", telephone: [""], email: "", services: []
   });
 
   const TYPES = ["Clinique", "Laboratoire d'analyse", "Centre d'imagerie", "Clinique dentaire", "Ophtalmologie"];
   const [servicesDisponibles, setServicesDisponibles] = useState([]);
 
-  // ── Chargement des types de prestations ────────────────────────────────────
   useEffect(() => {
     const chargerServices = async () => {
       try {
@@ -28,32 +22,25 @@ export default function AddClinicForm() {
         if (!data) return;
         const liste = Array.isArray(data) ? data : data.types || data.data || [];
         setServicesDisponibles(liste.map(t => t.nom));
-      } catch (err) {
-        console.error("Erreur chargement prestations", err);
-      }
+      } catch (err) { console.error("Erreur chargement prestations", err); }
     };
     chargerServices();
   }, []);
 
-  // ── Chargement de la liste des cliniques ───────────────────────────────────
-const chargerCliniques = async () => {
-  try {
-    const data = await apiFetch("/clinics/all");
-    if (!data) return;
-    const liste = Array.isArray(data) ? data : data?.data || data?.clinics || [];
-    setListeCliniques(liste);
-  } catch (err) {
-    console.error(err);
-  }
-};
+  const chargerCliniques = async () => {
+    try {
+      const data = await apiFetch("/clinics/all");
+      if (!data) return;
+      const liste = Array.isArray(data) ? data : data?.data || data?.clinics || [];
+      setListeCliniques(liste);
+    } catch (err) { console.error(err); }
+  };
 
   useEffect(() => {
     if (vueActive === "liste") chargerCliniques();
   }, [vueActive]);
 
-  const ajouterTel = () => {
-    setFormData({ ...formData, telephone: [...formData.telephone, ""] });
-  };
+  const ajouterTel = () => setFormData({ ...formData, telephone: [...formData.telephone, ""] });
 
   const modifierTel = (index, value) => {
     const updated = [...formData.telephone];
@@ -68,156 +55,166 @@ const chargerCliniques = async () => {
     setFormData({ ...formData, services: updated });
   };
 
-  // ── Soumission (ajout ou modification) ────────────────────────────────────
   const handleSubmit = async (e) => {
     e.preventDefault();
-
     const isEditing = !!formData.id;
     const endpoint = isEditing ? `/clinics/${formData.id}` : "/clinics/register";
-    const method = isEditing ? "PUT" : "POST";
-
+    const method   = isEditing ? "PUT" : "POST";
     try {
-      const data = await apiFetch(endpoint, {
-        method,
-        body: JSON.stringify(formData),
-      });
-
-      if (!data) return; // 401 → déjà redirigé par apiFetch
-
+      const data = await apiFetch(endpoint, { method, body: JSON.stringify(formData) });
+      if (!data) return;
       alert(isEditing ? "Modification réussie !" : "Ajout réussi ! Numéro : " + data.numeroSequence);
-
-      setFormData({
-        nom: "",
-        type: "Clinique",
-        adresse: "",
-        telephone: [""],
-        email: "",
-        services: []
-      });
-
+      setFormData({ nom: "", type: "Clinique", adresse: "", telephone: [""], email: "", services: [] });
       setVueActive("liste");
       chargerCliniques();
-    } catch (err) {
-      alert("Erreur lors de l'envoi");
-    }
+    } catch (err) { alert("Erreur lors de l'envoi"); }
   };
 
-  // ── Suppression ────────────────────────────────────────────────────────────
   const supprimerClinique = async (id) => {
     if (!confirm("Supprimer cette clinique ?")) return;
     try {
       await apiFetch(`/clinics/${id}`, { method: "DELETE" });
       chargerCliniques();
-    } catch (err) {
-      console.error(err);
-    }
+    } catch (err) { console.error(err); }
   };
 
   return (
     <div className="max-w-6xl mx-auto p-4 md:p-10 font-sans">
-      <div className="flex gap-2 mb-8 bg-gray-100 p-1 rounded-2xl w-fit">
+
+      {/* ── ONGLETS ── */}
+      <div className="flex gap-2 mb-8 bg-white p-1.5 rounded-xl shadow-sm border border-slate-100 w-fit">
         <button
           onClick={() => {
             setFormData({ nom: "", type: "Clinique", adresse: "", telephone: [""], email: "", services: [] });
             setVueActive("formulaire");
           }}
-          className={`flex items-center gap-2 py-3 px-6 rounded-xl font-bold transition-all ${
-            vueActive === "formulaire" && !formData.id ? "bg-white text-green-800 shadow-sm" : "text-gray-500 hover:text-gray-700"
+          className={`flex items-center gap-2 py-2 px-5 rounded-lg text-sm font-bold transition-all ${
+            vueActive === "formulaire" && !formData.id
+              ? "bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md"
+              : "text-slate-500 hover:text-slate-700 hover:bg-slate-100"
           }`}
         >
-          <PlusCircle size={18} /> Nouveau Partenaire
+          <PlusCircle size={16} /> Nouveau Partenaire
         </button>
         <button
           onClick={() => setVueActive("liste")}
-          className={`flex items-center gap-2 py-3 px-6 rounded-xl font-bold transition-all ${
-            vueActive === "liste" ? "bg-white text-green-800 shadow-sm" : "text-gray-500 hover:text-gray-700"
+          className={`flex items-center gap-2 py-2 px-5 rounded-lg text-sm font-bold transition-all ${
+            vueActive === "liste"
+              ? "bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md"
+              : "text-slate-500 hover:text-slate-700 hover:bg-slate-100"
           }`}
         >
-          <List size={18} /> Liste des Conventions
+          <List size={16} /> Liste des Conventions
         </button>
       </div>
 
+      {/* ── FORMULAIRE ── */}
       {vueActive === "formulaire" ? (
-        <div className="bg-white rounded-3xl shadow-xl p-10 border border-gray-100 animate-in fade-in duration-500">
-          <div className="mb-10">
-            <h2 className="text-4xl font-black text-slate-800 flex items-center gap-3">
-              {formData.id ? "Modifier la Convention" : "Ajouter une Convention"}
-              <ShieldCheck size={32} className="text-green-700" />
-            </h2>
-            <p className="text-gray-400 mt-2 font-medium">Gestion des établissements de santé conventionnés</p>
+        <div className="bg-white rounded-2xl shadow-xl shadow-slate-100 border border-slate-100 p-10 animate-in fade-in duration-500">
+
+          {/* Header */}
+          <div className="mb-8 flex items-start gap-4">
+            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg flex-shrink-0">
+              <ShieldCheck size={22} className="text-white" />
+            </div>
+            <div>
+              <h2 className="text-2xl font-black text-slate-800 tracking-tight">
+                {formData.id ? "Modifier la Convention" : "Ajouter une Convention"}
+              </h2>
+              <p className="text-slate-400 text-sm mt-1 font-medium">Gestion des établissements de santé conventionnés</p>
+            </div>
           </div>
+
+          {/* Ligne décorative */}
+          <div className="w-full h-px bg-gradient-to-r from-emerald-100 via-teal-100 to-transparent mb-8"></div>
 
           <form onSubmit={handleSubmit} className="space-y-8">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              <div className="space-y-6">
-                <div className="space-y-1">
-                  <label className="text-sm font-bold text-gray-700 ml-1">Nom de l'établissement</label>
+
+              {/* Colonne gauche */}
+              <div className="space-y-5">
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider block mb-1.5 ml-1">
+                    Nom de l'établissement
+                  </label>
                   <input
                     required
                     value={formData.nom}
                     onChange={e => setFormData({ ...formData, nom: e.target.value })}
-                    className="w-full p-4 bg-gray-50 border-none rounded-2xl outline-none focus:ring-2 ring-green-100"
+                    className="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-300 focus:border-emerald-300 transition-all text-slate-800 font-medium"
                     placeholder="Ex: Clinique El Amen"
                   />
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-sm font-bold text-gray-700 ml-1">Type d'établissement</label>
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider block mb-1.5 ml-1">
+                    Type d'établissement
+                  </label>
                   <select
                     value={formData.type}
                     onChange={e => setFormData({ ...formData, type: e.target.value })}
-                    className="w-full p-4 bg-gray-50 border-none rounded-2xl outline-none"
+                    className="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-300 transition-all text-slate-700 font-medium"
                   >
                     {TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-sm font-bold text-gray-700 ml-1">Adresse Complète</label>
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider block mb-1.5 ml-1">
+                    Adresse Complète
+                  </label>
                   <div className="relative">
-                    <MapPin className="absolute left-4 top-4 text-gray-400" size={20} />
+                    <MapPin className="absolute left-3.5 top-3.5 text-slate-400" size={18} />
                     <input
                       required
                       value={formData.adresse}
                       onChange={e => setFormData({ ...formData, adresse: e.target.value })}
-                      className="w-full p-4 pl-12 bg-gray-50 border-none rounded-2xl outline-none"
+                      className="w-full p-3.5 pl-10 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-300 transition-all text-slate-800 font-medium"
                       placeholder="Rue, Ville, Wilaya"
                     />
                   </div>
                 </div>
               </div>
 
-              <div className="space-y-6">
-                <div className="space-y-1">
-                  <label className="text-sm font-bold text-gray-700 ml-1">Téléphone</label>
-                  <div className="relative">
-                    <Phone className="absolute left-4 top-4 text-gray-400" size={20} />
-                    <div className="pl-12">
-                      {formData.telephone.map((tel, index) => (
+              {/* Colonne droite */}
+              <div className="space-y-5">
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider block mb-1.5 ml-1">
+                    Téléphone
+                  </label>
+                  <div className="space-y-2">
+                    {formData.telephone.map((tel, index) => (
+                      <div key={index} className="relative">
+                        <Phone className="absolute left-3.5 top-3.5 text-slate-400" size={18} />
                         <input
-                          key={index}
                           value={tel}
                           onChange={(e) => modifierTel(index, e.target.value)}
-                          className="w-full p-4 bg-gray-50 rounded-2xl mb-2 outline-none"
+                          className="w-full p-3.5 pl-10 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-300 transition-all text-slate-800 font-medium"
                           placeholder="Numéro téléphone"
                         />
-                      ))}
-                      <button type="button" onClick={ajouterTel} className="text-green-700 font-bold text-sm">
-                        + Ajouter numéro
-                      </button>
-                    </div>
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={ajouterTel}
+                      className="text-emerald-600 font-bold text-sm hover:text-emerald-700 transition-colors flex items-center gap-1"
+                    >
+                      <PlusCircle size={14} /> Ajouter numéro
+                    </button>
                   </div>
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-sm font-bold text-gray-700 ml-1">Email professionnel</label>
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider block mb-1.5 ml-1">
+                    Email professionnel
+                  </label>
                   <div className="relative">
-                    <Mail className="absolute left-4 top-4 text-gray-400" size={20} />
+                    <Mail className="absolute left-3.5 top-3.5 text-slate-400" size={18} />
                     <input
                       type="email"
                       value={formData.email}
                       onChange={e => setFormData({ ...formData, email: e.target.value })}
-                      className="w-full p-4 pl-12 bg-gray-50 border-none rounded-2xl outline-none"
+                      className="w-full p-3.5 pl-10 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-300 transition-all text-slate-800 font-medium"
                       placeholder="contact@etablissement.dz"
                     />
                   </div>
@@ -225,18 +222,21 @@ const chargerCliniques = async () => {
               </div>
             </div>
 
-            <div className="pt-6 border-t border-gray-100">
-              <label className="text-sm font-black text-green-900 uppercase tracking-widest mb-4 block">Services Assurés</label>
-              <div className="flex flex-wrap gap-3">
+            {/* Services */}
+            <div className="pt-6 border-t border-slate-100">
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider block mb-4">
+                Services Assurés
+              </label>
+              <div className="flex flex-wrap gap-2">
                 {servicesDisponibles.map(service => (
                   <button
                     key={service}
                     type="button"
                     onClick={() => toggleService(service)}
-                    className={`px-6 py-3 rounded-2xl font-bold transition-all border-2 ${
+                    className={`px-4 py-2 rounded-xl font-bold text-sm transition-all border ${
                       formData.services.includes(service)
-                        ? "bg-green-900 border-green-900 text-white shadow-md"
-                        : "bg-white border-gray-100 text-gray-500 hover:border-green-200"
+                        ? "bg-gradient-to-r from-emerald-600 to-teal-600 border-transparent text-white shadow-md shadow-emerald-200"
+                        : "bg-white border-slate-200 text-slate-500 hover:border-emerald-300 hover:text-emerald-700"
                     }`}
                   >
                     {service}
@@ -245,77 +245,108 @@ const chargerCliniques = async () => {
               </div>
             </div>
 
+            {/* Submit */}
             <button
               type="submit"
-              className="w-full py-5 bg-green-900 text-white font-black rounded-2xl shadow-lg hover:bg-green-800 transition-all uppercase tracking-widest text-lg mt-8"
+              className="w-full py-4 bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-black rounded-xl shadow-lg shadow-emerald-200 hover:from-emerald-700 hover:to-teal-700 transition-all uppercase tracking-widest text-sm mt-4"
             >
               {formData.id ? "Mettre à jour la convention" : "Enregistrer la convention"}
             </button>
           </form>
         </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in fade-in">
-          {listeCliniques.map(clinic => (
-            <div key={clinic.id} className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
-              <div className="flex justify-between items-start mb-4">
-                <span className="bg-green-50 text-green-700 px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-tighter">
-                  {clinic.numeroSequence}
-                </span>
-                <span className="text-[10px] font-bold text-slate-400 uppercase">{clinic.type}</span>
-              </div>
-              <h3 className="text-xl font-black text-slate-800 mb-2">{clinic.nom}</h3>
-              <div className="space-y-2 text-sm text-gray-500 mb-6">
-                <p className="flex items-center gap-2"><MapPin size={14} /> {clinic.adresse}</p>
-                {(() => {
-                  try {
-                    const tels = typeof clinic.telephone === "string" ? JSON.parse(clinic.telephone) : clinic.telephone;
-                    return Array.isArray(tels)
-                      ? tels.map((tel, i) => (
-                          <p key={i} className="flex items-center gap-2"><Phone size={14} /> {tel}</p>
-                        ))
-                      : null;
-                  } catch (e) { return null; }
-                })()}
-              </div>
-              <div className="flex flex-wrap gap-1">
-                {clinic.services &&
-                  (typeof clinic.services === "string" ? JSON.parse(clinic.services) : clinic.services).map(s => (
-                    <span key={s} className="bg-slate-50 text-slate-600 px-2 py-1 rounded-md text-[9px] font-bold border border-slate-100">
-                      {s}
-                    </span>
-                  ))}
-              </div>
-              <div className="flex gap-4 mt-4 pt-4 border-t border-gray-50">
-                {/* ── Suppression ── */}
-                <button
-                  onClick={() => supprimerClinique(clinic.id)}
-                  className="text-red-500 flex items-center gap-1 text-sm font-bold"
-                >
-                  <Trash2 size={16} /> Supprimer
-                </button>
 
-                {/* ── Modification ── */}
-                <button
-                  onClick={() => {
-                    const safeParse = (data) => {
-                      if (!data) return [];
-                      if (typeof data !== "string") return data;
-                      try { return JSON.parse(data); } catch (e) { return [data]; }
-                    };
-                    setFormData({
-                      ...clinic,
-                      telephone: safeParse(clinic.telephone),
-                      services: safeParse(clinic.services)
-                    });
-                    setVueActive("formulaire");
-                  }}
-                  className="text-blue-500 text-sm font-bold"
-                >
-                  Modifier
-                </button>
+      ) : (
+        /* ── LISTE ── */
+        <div>
+          {/* Header liste */}
+          <div className="flex items-center gap-2 mb-6 p-5 bg-white rounded-2xl shadow-xl shadow-slate-100 border border-slate-100">
+            <div className="w-1 h-6 bg-gradient-to-b from-emerald-500 to-teal-600 rounded-full"></div>
+            <h2 className="text-sm font-black text-slate-700 uppercase tracking-wider">
+              Conventions actives
+            </h2>
+            <span className="ml-auto bg-emerald-100 text-emerald-700 text-xs font-bold px-3 py-1 rounded-full">
+              {listeCliniques.length} établissement{listeCliniques.length > 1 ? "s" : ""}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 animate-in fade-in">
+            {listeCliniques.map(clinic => (
+              <div
+                key={clinic.id}
+                className="bg-white p-6 rounded-2xl shadow-xl shadow-slate-100 border border-slate-100 hover:shadow-2xl hover:-translate-y-0.5 transition-all duration-200 group"
+              >
+                {/* Top badges */}
+                <div className="flex justify-between items-start mb-4">
+                  <span className="bg-gradient-to-r from-emerald-50 to-teal-50 text-emerald-700 border border-emerald-100 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider">
+                    {clinic.numeroSequence}
+                  </span>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase bg-slate-50 px-2 py-1 rounded-full">
+                    {clinic.type}
+                  </span>
+                </div>
+
+                {/* Nom */}
+                <h3 className="text-lg font-black text-slate-800 mb-3 group-hover:text-emerald-700 transition-colors">
+                  {clinic.nom}
+                </h3>
+
+                {/* Infos */}
+                <div className="space-y-1.5 text-sm text-slate-500 mb-5">
+                  <p className="flex items-center gap-2">
+                    <MapPin size={13} className="text-emerald-500 flex-shrink-0" />
+                    <span className="truncate">{clinic.adresse}</span>
+                  </p>
+                  {(() => {
+                    try {
+                      const tels = typeof clinic.telephone === "string" ? JSON.parse(clinic.telephone) : clinic.telephone;
+                      return Array.isArray(tels)
+                        ? tels.map((tel, i) => (
+                          <p key={i} className="flex items-center gap-2">
+                            <Phone size={13} className="text-emerald-500 flex-shrink-0" />
+                            {tel}
+                          </p>
+                        ))
+                        : null;
+                    } catch (e) { return null; }
+                  })()}
+                </div>
+
+                {/* Services */}
+                <div className="flex flex-wrap gap-1 mb-4">
+                  {clinic.services &&
+                    (typeof clinic.services === "string" ? JSON.parse(clinic.services) : clinic.services).map(s => (
+                      <span key={s} className="bg-emerald-50 text-emerald-700 border border-emerald-100 px-2 py-0.5 rounded-full text-[9px] font-bold">
+                        {s}
+                      </span>
+                    ))}
+                </div>
+
+                {/* Actions */}
+                <div className="flex gap-3 pt-4 border-t border-slate-100">
+                  <button
+                    onClick={() => supprimerClinique(clinic.id)}
+                    className="flex items-center gap-1.5 text-xs font-bold text-red-500 hover:text-red-600 transition-colors"
+                  >
+                    <Trash2 size={14} /> Supprimer
+                  </button>
+                  <button
+                    onClick={() => {
+                      const safeParse = (data) => {
+                        if (!data) return [];
+                        if (typeof data !== "string") return data;
+                        try { return JSON.parse(data); } catch (e) { return [data]; }
+                      };
+                      setFormData({ ...clinic, telephone: safeParse(clinic.telephone), services: safeParse(clinic.services) });
+                      setVueActive("formulaire");
+                    }}
+                    className="flex items-center gap-1.5 text-xs font-bold text-emerald-600 hover:text-emerald-700 transition-colors ml-auto"
+                  >
+                    ✏️ Modifier
+                  </button>
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       )}
     </div>

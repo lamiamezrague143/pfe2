@@ -139,22 +139,12 @@ router.get('/', authMiddleware(["agent", "beneficiaire","president"]), async (re
     const limit = parseInt(req.query.limit) || 20;
     const offset = parseInt(req.query.offset) || 0;
 
-    const demandes = await Demande.findAll({
-      attributes: [
-        'id',
-        'nom_beneficiaire',
-        'sexe',
-        'telephone',
-        'type_prestation',
-        'statut',
-        'createdAt',
-        'pieces',
-        [sequelize.literal('JSON_LENGTH(pieces)'), 'nb_pieces']
-      ],
-      order: [['createdAt', 'DESC']],
-      limit,
-      offset
-    });
+// APRÈS — tous les champs inclus
+const demandes = await Demande.findAll({
+  order: [['createdAt', 'DESC']],
+  limit,
+  offset
+});
 
     res.json(demandes);
 

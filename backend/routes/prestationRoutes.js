@@ -1,8 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const { Prestation } = require('../models');
-const authMiddleware = require("../middleware/authMiddleware"); // 🔐 IMPORTANT
 
+const authMiddleware = require("../middleware/authMiddleware"); // 🔐 IMPORTANT
+const Prestation = require("../models/Prestation");
 // 🟢 GET ALL PRESTATIONS (secrétariat + président)
 router.get('/all', authMiddleware(["secretariat", "president"]), async (req, res) => {
     try {

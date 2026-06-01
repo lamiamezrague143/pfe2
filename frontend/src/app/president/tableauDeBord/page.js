@@ -531,12 +531,7 @@ const updatePlafondDB = async (key, value) => {
     );
   };
 
-  const menuItems = [
-    { icon: HomeIcon, label: "Accueil", href: "/" },
-    { icon: ChartBarIcon, label: "Tableau de bord", href: "/president/tableauDeBord", active: true, badge: "12" },
-    { icon: FolderIcon, label: "Archives PV", href: "/president" },
-    { icon: Cog6ToothIcon, label: "Paramètres", href: "/president/Parametre" },
-  ];
+
 
   if (loading) return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center">
@@ -559,60 +554,7 @@ const updatePlafondDB = async (key, value) => {
         }
       `}</style>
 
-      {/* SIDEBAR MODERNE - Identique à la page archives */}
-      <aside 
-        className={`relative bg-white shadow-2xl shadow-slate-200 transition-all duration-300 flex flex-col ${
-          isCollapsed ? "w-20" : "w-64"
-        }`}
-        style={{ borderRight: "1px solid rgba(0,0,0,0.05)" }}
-      >
-        <div className={`p-5 border-b border-slate-100 flex items-center ${isCollapsed ? "justify-center" : "gap-3"}`}>
-          <div className="relative">
-            <div className="absolute inset-0 bg-gradient-to-r from-emerald-400 to-teal-500 rounded-xl blur-md opacity-60"></div>
-            <div className="relative w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg">
-              <span className="text-white font-bold text-lg">S</span>
-            </div>
-          </div>
-          {!isCollapsed && (
-            <div className="flex-1">
-              <h2 className="font-black text-slate-800 text-sm tracking-tight">SG/COS</h2>
-              <p className="text-[8px] text-slate-400 uppercase tracking-wider font-semibold">Gestion Intégrée</p>
-            </div>
-          )}
-        </div>
 
-        {!isCollapsed && (
-          <div className="mx-4 mt-6 p-3 rounded-xl bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-100">
-            <div className="flex items-center gap-3">
-              <div className="relative">
-                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-md">
-                  <span className="text-white text-sm font-bold">AD</span>
-                </div>
-                <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 rounded-full border-2 border-white"></div>
-              </div>
-              <div className="flex-1">
-                <p className="text-xs font-bold text-slate-700">Admin User</p>
-                <p className="text-[9px] text-slate-500">Super Administrateur</p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        <nav className="flex-1 px-3 py-6 space-y-1.5">
-          {menuItems.map((item, idx) => (
-            <MenuItem
-              key={idx}
-              icon={item.icon}
-              label={item.label}
-              href={item.href}
-              active={item.active}
-              badge={item.badge}
-            />
-          ))}
-        </nav>
-
-        <div className="absolute bottom-24 left-1/2 -translate-x-1/2 w-16 h-24 bg-gradient-to-t from-emerald-500/5 to-transparent rounded-full blur-xl pointer-events-none"></div>
-      </aside>
 
       {/* MAIN CONTENT */}
       <main className="flex-1 flex flex-col min-w-0">

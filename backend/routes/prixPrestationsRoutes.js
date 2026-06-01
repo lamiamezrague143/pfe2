@@ -61,5 +61,34 @@ router.delete("/:id", async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+// 📥 Import en masse depuis Excel
+router.post("/import", async (req, res) => {
+  try {
+    const { cliniqueId, prestations } = req.body;
 
+    if (!cliniqueId || !Array.isArray(prestations) || prestations.length === 0) {
+      return res.status(400).json({ error: "Données invalides" });
+    }
+
+    let inserted = 0, updated = 0;
+
+    for (const p of prestations) {
+      const existing = await PrixPrestations.findOne({
+        where: { cliniqueId, nom: p.nom }
+      });
+
+      if (existing) {
+        await existing.update({ prix: p.prix });
+        updated++;
+      } else {
+        await PrixPrestations.create({ cliniqueId, nom: p.nom, prix: p.prix });
+        inserted++;
+      }
+    }
+
+    res.json({ inserted, updated, skipped: 0 });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 module.exports = router;

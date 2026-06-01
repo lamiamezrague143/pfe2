@@ -31,6 +31,8 @@ pieces: {
   type: DataTypes.STRING,
   allowNull: true
 },
+pour_qui:   { type: DataTypes.ENUM('moi', 'autre'), defaultValue: 'moi' },
+lien_parente: { type: DataTypes.STRING, allowNull: true },
   motif_refus: { type: DataTypes.TEXT, allowNull: true },
   message_admin: { type: DataTypes.TEXT, allowNull: true } // Pour les dossiers validés
 }, {

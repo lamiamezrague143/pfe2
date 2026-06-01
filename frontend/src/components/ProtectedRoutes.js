@@ -1,7 +1,19 @@
 "use client";
-
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+
+function getCookie(name) {
+  const value = `; ${document.cookie}`;
+  const parts = value.split(`; ${name}=`);
+  if (parts.length === 2) return parts.pop().split(";").shift();
+  return null;
+}
+
+function getUser() {
+  const token = getCookie("token"); // ✅ lit le cookie au lieu de localStorage
+  const role = localStorage.getItem("role");
+  return { token, role };
+}
 
 export default function ProtectedRoutes({ children, roles = [] }) {
   const router = useRouter();
@@ -10,20 +22,18 @@ export default function ProtectedRoutes({ children, roles = [] }) {
   useEffect(() => {
     const { token, role } = getUser();
 
-    // pas connecté
     if (!token) {
-      router.replace("/login");
+      router.replace("/");
       return;
     }
 
-    // check roles seulement si roles est défini
     if (roles.length > 0 && !roles.includes(role)) {
-      router.replace("/unauthorized");
+      router.replace("/");
       return;
     }
 
     setLoading(false);
-  }, [router, roles]);
+  }, []);
 
   if (loading) {
     return (

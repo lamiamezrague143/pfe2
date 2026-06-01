@@ -38,7 +38,7 @@ router.post("/", authMiddleware(["agent", "president"]), async (req, res) => {
 });
 
 // 🟢 LISTE (agent + président)
-router.get("/all", authMiddleware(["agent", "president"]), async (req, res) => {
+router.get("/all", authMiddleware(["agent", "president","comptable"]), async (req, res) => {
   try {
     const { search } = req.query;
 

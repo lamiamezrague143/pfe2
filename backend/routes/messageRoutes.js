@@ -21,9 +21,10 @@ router.get("/", authMiddleware(["agent", "beneficiaire","president"]), async (re
             ],
           },
       order: [["createdAt", "ASC"]],
-      include: [
-        { model: User, as: "sender", attributes: ["id", "nomComplet"] },
-      ],
+    // Dans GET "/" et POST "/" — les deux endroits
+include: [
+  { model: User, as: "sender", attributes: ["id", "nomComplet", "prenomComplet"] },
+],
     });
 
     res.json(messages);
@@ -47,9 +48,10 @@ router.post("/", authMiddleware(["agent", "beneficiaire","president"]), upload.s
 
     // ✅ Recharger avec le nom du sender
     const messageComplet = await Message.findByPk(message.id, {
-      include: [
-        { model: User, as: "sender", attributes: ["id", "nomComplet"] },
-      ],
+     // Dans GET "/" et POST "/" — les deux endroits
+include: [
+  { model: User, as: "sender", attributes: ["id", "nomComplet", "prenomComplet"] },
+],
     });
 
     // ✅ Broadcaster via socket
@@ -64,5 +66,53 @@ router.post("/", authMiddleware(["agent", "beneficiaire","president"]), upload.s
     res.status(500).json({ message: "Erreur serveur" });
   }
 });
+// 🔴 DELETE MESSAGE — supprimer un message
+router.delete(
+  "/:id",
+  authMiddleware(["agent", "beneficiaire", "president"]),
+  async (req, res) => {
+    try {
+      const message = await Message.findByPk(req.params.id);
 
+      // ✅ Vérifier si le message existe
+      if (!message) {
+        return res.status(404).json({
+          message: "Message introuvable",
+        });
+      }
+
+      // ✅ Sécurité :
+      // - l'agent peut supprimer tous les messages
+      // - sinon seulement l'expéditeur du message
+      if (
+        req.user.role !== "agent" &&
+        message.senderId !== req.user.id
+      ) {
+        return res.status(403).json({
+          message: "Non autorisé",
+        });
+      }
+
+      // ✅ Supprimer le message
+      await message.destroy();
+
+      // ✅ Informer les sockets
+      const io = req.app.get("io");
+      if (io) {
+        io.emit("message_deleted", {
+          id: message.id,
+        });
+      }
+
+      res.json({
+        message: "Message supprimé avec succès",
+      });
+    } catch (err) {
+      console.error("❌ DELETE message error:", err);
+      res.status(500).json({
+        message: "Erreur serveur",
+      });
+    }
+  }
+);
 module.exports = router;

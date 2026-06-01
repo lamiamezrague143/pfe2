@@ -1,19 +1,19 @@
-import Navbar from "../../components/Layout/Navbar";
+"use client";
+import ProtectedRoutes from "../../components/ProtectedRoutes";
+import Agentsidebar from "../../components/sidebars/Agentsidebar";
 import "../style.css";
-
 
 export default function AppLayout({ children }) {
   return (
-    <div className="min-h-screen flex flex-col">
-      {/* La barre est maintenant en haut */}
-      <Navbar /> 
-
-      {/* Le contenu principal occupe le reste de l'espace */}
-      <main className="flex-1 bg-gray-50 p-8">
-        <div className="max-w-7xl mx-auto">
-          {children}
-        </div>
-      </main>
-    </div>
+    <ProtectedRoutes roles={["agent", "president"]}>
+      <div className="min-h-screen flex flex-row">
+        <Agentsidebar />
+        <main className="flex-1 bg-gray-50 p-8 overflow-auto">
+          <div className="max-w-5xl mx-auto">
+            {children}
+          </div>
+        </main>
+      </div>
+    </ProtectedRoutes>
   );
 }

@@ -7,7 +7,7 @@ const authMiddleware = require("../middleware/authMiddleware"); // 🔐 IMPORTAN
 // ─────────────────────────────
 // GET : settings (président uniquement)
 // ─────────────────────────────
-router.get('/', authMiddleware(["president"]), async (req, res) => {
+router.get('/', authMiddleware(["president","comptable"]), async (req, res) => {
   try {
     const settings = await Setting.findAll();
 

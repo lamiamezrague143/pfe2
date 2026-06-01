@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const { Dossier, PieceDossier } = require('../models');
+// REMPLACE
+const { Dossier, PieceDossier } = require('../models'); // déjà bon si tu as ça
 const { sequelize } = require('../config/db');
 const { Op } = require('sequelize');
 const authMiddleware = require("../middleware/authMiddleware"); // 🔐 IMPORTANT
@@ -65,7 +66,7 @@ router.post('/ajouter', authMiddleware(["secretariat", "president"]), async (req
 });
 
 // ✅ LISTE GÉNÉRALE (secrétariat + président)
-router.get('/liste-generale', authMiddleware(["secretariat", "president"]), async (req, res) => {
+router.get('/liste-generale', authMiddleware(["secretariat", "president","comptable"]), async (req, res) => {
   try {
     const { debut, fin } = req.query;
 

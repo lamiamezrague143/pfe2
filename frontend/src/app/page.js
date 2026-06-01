@@ -1,19 +1,17 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { EyeIcon, EyeSlashIcon, ShieldCheckIcon } from "@heroicons/react/24/outline";
+import { EyeIcon, EyeSlashIcon } from "@heroicons/react/24/outline";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const [remember, setRemember] = useState(false);
   const router = useRouter();
 
-  // Logique de connexion (inchangée mais intégrée)
   const handleLogin = async (e) => {
     e.preventDefault();
-    setIsLoading(true);
     try {
       const res = await fetch("http://localhost:5001/api/users/login", {
         method: "POST",
@@ -21,132 +19,156 @@ export default function LoginPage() {
         body: JSON.stringify({ email, password }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Erreur d'authentification");
       
+      if (!res.ok) {
+        alert(data.message || "Échec de la connexion. Veuillez vérifier vos identifiants."); 
+        return;
+      }
+
       localStorage.setItem("token", data.token);
       localStorage.setItem("role", data.user.role);
       localStorage.setItem("user", JSON.stringify(data.user));
-      
-      router.push(data.user.firstLogin ? "/change-password" : `/${data.user.role}`);
+
+      // Stockage du cookie avant la redirection pour le middleware
+      document.cookie = `token=${data.token}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Lax`;
+
+      const routes = {
+        president: "/president",
+        secretariat: "/secretariat",
+        comptable: "/comptable",
+        agent: "/priseEnCharge",
+        ingenieur: "/celluleInfo",
+        beneficiaire: "/client",
+      };
+
+      const destination = data.user.firstLogin
+        ? "/change-password"
+        : (routes[data.user.role] || "/");
+
+      // Force un rechargement complet pour que le middleware lise immédiatement le cookie
+      window.location.href = destination;
+
     } catch (err) {
-      alert(err.message);
-    } finally {
-      setIsLoading(false);
+      alert("Erreur serveur. Veuillez réessayer plus tard.");
     }
   };
 
-  return (
-    <div className="min-h-screen w-full flex items-center justify-center bg-[#f4f7f6] relative font-sans antialiased overflow-hidden">
-      
-      {/* Background Decor - Formes géométriques M2 Style */}
-      <div className="absolute top-0 left-0 w-full h-full overflow-hidden z-0 opacity-40">
-        <div className="absolute top-[-10%] left-[-5%] w-96 h-96 bg-emerald-200 rounded-full blur-[120px]" />
-        <div className="absolute bottom-[-5%] right-[-5%] w-[500px] h-[500px] bg-emerald-100 rounded-full blur-[100px]" />
-      </div>
+  const getGreeting = () => {
+    const h = new Date().getHours();
+    if (h < 12) return "Bon matin";
+    if (h < 18) return "Bon après-midi";
+    return "Bonsoir";
+  };
 
-      {/* Main Container */}
-      <div className="relative z-10 flex w-full max-w-[1150px] h-[700px] bg-white rounded-[32px] shadow-[0_40px_100px_-20px_rgba(0,0,0,0.08)] border border-white overflow-hidden">
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-slate-50 p-6">
+      {/* Container Principal */}
+      <div className="flex w-full max-w-[1000px] min-h-[620px] bg-white rounded-3xl overflow-hidden shadow-2xl shadow-slate-200/80 border border-slate-100">
         
-        {/* LEFT SIDE: Branding & Presentation */}
-        <div className="hidden lg:flex w-[42%] bg-[#064e3b] p-16 flex-col justify-between relative">
-          {/* Subtle Overlay Pattern */}
-          <div className="absolute inset-0 opacity-10 pointer-events-none" 
-               style={{ backgroundImage: `radial-gradient(circle at 2px 2px, white 1px, transparent 0)`, backgroundSize: '32px 32px' }} />
-          
-          <div className="relative z-10">
-            <div className="flex items-center gap-3 mb-12">
-              <div className="w-12 h-12 bg-emerald-500 rounded-xl flex items-center justify-center shadow-lg shadow-emerald-900/20">
-                <ShieldCheckIcon className="w-7 h-7 text-white" />
-              </div>
-              <span className="text-white font-bold text-xl tracking-tight">SG-COS</span>
-            </div>
-            
-            <h1 className="text-5xl font-extrabold text-white leading-tight mb-6">
-              Système de <br/> <span className="text-emerald-400">Gestion Intégré</span>
-            </h1>
-            <p className="text-emerald-100/60 text-lg leading-relaxed max-w-xs">
-              Plateforme centralisée pour la gestion des œuvres sociales de l'université l'UMMTO.
+        {/* PANNEAU GAUCHE - Effet Visuel Liquide */}
+        <div className="hidden md:flex relative w-[42%] flex-col items-center justify-center overflow-hidden bg-gradient-to-br from-emerald-500 via-teal-600 to-emerald-700 p-8">
+          {/* Formes floues d'ambiance */}
+          <div className="absolute top-[-20%] left-[-20%] w-[140%] h-[70%] bg-white/10 rounded-[100%] blur-3xl transform rotate-12"></div>
+          <div className="absolute bottom-[-10%] right-[-10%] w-[100%] h-[50%] bg-emerald-900/20 rounded-[100%] blur-2xl"></div>
+
+          {/* Sphères flottantes effet verre liquide */}
+          <div className="absolute top-1/4 left-1/3 w-24 h-24 bg-gradient-to-tr from-white/20 to-white/5 rounded-full blur-[1px] backdrop-blur-sm shadow-xl border border-white/10"></div>
+          <div className="absolute bottom-1/4 right-1/4 w-36 h-36 bg-gradient-to-br from-emerald-400/30 to-emerald-600/10 rounded-full blur-[2px] shadow-2xl"></div>
+
+          <div className="relative z-10 text-center">
+            <h2 className="text-white font-extrabold text-4xl mb-3 tracking-tight">Ravi de vous revoir</h2>
+            <p className="text-emerald-100/80 text-sm font-light tracking-wide max-w-[220px] mx-auto">
+              Accédez à votre espace et gérez vos activités en toute simplicité.
             </p>
           </div>
 
-          <div className="relative z-10 border-t border-emerald-800/50 pt-8">
-            <p className="text-emerald-200/40 text-[11px] uppercase tracking-[0.3em] font-bold">
-              SG/COS 2026
+          <div className="absolute bottom-8 z-10">
+            <p className="text-white/40 text-[10px] tracking-[0.25em] uppercase font-bold">
+              sg-cos.ummto.dz
             </p>
           </div>
         </div>
 
-        {/* RIGHT SIDE: Login Form */}
-        <div className="flex-1 flex flex-col justify-center px-16 md:px-24 py-12 bg-white">
-          <div className="max-w-md w-full mx-auto">
-            <div className="mb-12 text-center lg:text-left">
-              <h2 className="text-3xl font-black text-slate-900 tracking-tight mb-3">Authentification</h2>
-              <p className="text-slate-400 text-sm">Veuillez saisir vos identifiants académiques.</p>
+        {/* PANNEAU DROIT - Formulaire Épuré */}
+        <div className="flex-1 flex flex-col justify-center px-10 sm:px-16 md:px-20 py-12 relative bg-white">
+          
+          <div className="mb-10">
+            <p className="text-slate-400 text-xs uppercase tracking-wider font-semibold mb-1">Bonjour !</p>
+            <p className="text-emerald-600 font-bold text-xl mb-6">{getGreeting()}</p>
+            <h3 className="text-slate-800 font-extrabold text-3xl tracking-tight">
+              Connectez-vous à votre <span className="text-emerald-500">Compte</span>
+            </h3>
+          </div>
+
+          <form onSubmit={handleLogin} className="space-y-6">
+            {/* Champ Email */}
+            <div className="relative group">
+              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest block mb-2 ml-1 group-focus-within:text-emerald-600 transition-colors">
+                Adresse Email
+              </label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="nom.prenom@ummto.dz"
+                required
+                className="w-full border-b-2 border-slate-100 focus:border-emerald-500 outline-none py-2.5 text-sm text-slate-700 bg-transparent transition-all placeholder:text-slate-300"
+              />
             </div>
 
-            <form onSubmit={handleLogin} className="space-y-7">
-              {/* Email Field */}
-              <div className="space-y-2 group">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 transition-colors group-focus-within:text-emerald-600">
-                  Adresse de messagerie
-                </label>
-                <div className="relative">
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="prenom.nom@ummto.dz"
-                    required
-                    className="w-full h-14 px-5 rounded-2xl bg-slate-50 border border-slate-100 text-slate-700 font-medium outline-none transition-all focus:bg-white focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500"
-                  />
-                </div>
+            {/* Champ Mot de passe */}
+            <div className="relative group">
+              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest block mb-2 ml-1 group-focus-within:text-emerald-600 transition-colors">
+                Mot de passe
+              </label>
+              <div className="relative">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  required
+                  className="w-full border-b-2 border-slate-100 focus:border-emerald-500 outline-none py-2.5 pr-10 text-sm text-slate-700 bg-transparent transition-all placeholder:text-slate-300"
+                />
+                <button 
+                  type="button" 
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-0 top-1/2 -translate-y-1/2 text-slate-300 hover:text-emerald-600 transition-colors"
+                >
+                  {showPassword ? <EyeSlashIcon className="w-5 h-5" /> : <EyeIcon className="w-5 h-5" />}
+                </button>
               </div>
+            </div>
 
-              {/* Password Field */}
-              <div className="space-y-2 group">
-                <div className="flex justify-between items-center px-1">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest transition-colors group-focus-within:text-emerald-600">
-                    Mot de passe
-                  </label>
-                  <button type="button" className="text-[10px] font-bold text-emerald-600 hover:underline">OUBLIÉ ?</button>
-                </div>
-                <div className="relative">
-                  <input
-                    type={showPassword ? "text" : "password"}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••"
-                    required
-                    className="w-full h-14 px-5 rounded-2xl bg-slate-50 border border-slate-100 text-slate-700 font-medium outline-none transition-all focus:bg-white focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500"
-                  />
-                  <button 
-                    type="button" 
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 hover:text-emerald-600 transition-colors"
-                  >
-                    {showPassword ? <EyeSlashIcon className="w-5 h-5" /> : <EyeIcon className="w-5 h-5" />}
-                  </button>
-                </div>
-              </div>
+            {/* Options Additionnelles */}
+            <div className="flex items-center justify-between pt-2">
+              <label className="flex items-center gap-2 text-xs text-slate-400 cursor-pointer select-none font-medium hover:text-slate-500 transition-colors">
+                <input 
+                  type="checkbox" 
+                  checked={remember} 
+                  onChange={(e) => setRemember(e.target.checked)}
+                  className="w-4 h-4 rounded border-slate-300 text-emerald-500 accent-emerald-500 cursor-pointer" 
+                />
+                Se souvenir de moi
+              </label>
+              <button type="button" className="text-xs text-slate-400 font-medium hover:text-emerald-600 transition-colors">
+                Mot de passe oublié ?
+              </button>
+            </div>
 
-              {/* Action Button */}
+            {/* Bouton de Soumission */}
+            <div className="pt-4">
               <button 
                 type="submit"
-                disabled={isLoading}
-                className="w-full h-14 mt-4 bg-slate-900 rounded-2xl text-white font-bold tracking-widest text-[11px] uppercase shadow-xl shadow-slate-200 transition-all hover:bg-emerald-600 hover:shadow-emerald-200 active:scale-95 disabled:opacity-50"
+                className="w-full py-4 rounded-xl text-white text-xs font-bold tracking-[0.2em] uppercase shadow-lg shadow-emerald-600/20 bg-gradient-to-r from-emerald-500 via-teal-600 to-emerald-600 hover:opacity-95 hover:scale-[1.01] active:scale-[0.99] transition-all"
               >
-                {isLoading ? "Vérification..." : "Se connecter au portail"}
+                Se connecter
               </button>
-            </form>
-
-            <div className="mt-16 text-center">
-              <p className="text-[10px] text-slate-300 font-bold uppercase tracking-[0.2em]">
-                UMMTO • 2026
-              </p>
             </div>
-          </div>
-        </div>
+          </form>
 
+          
+        </div>
       </div>
     </div>
   );

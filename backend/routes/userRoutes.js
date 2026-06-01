@@ -7,13 +7,15 @@ const { upload } = require("../config/cloudinary");
 const { Op, fn, col } = require("sequelize");
 const authMiddleware = require("../middleware/authMiddleware");
 const jwt = require("jsonwebtoken");
+const loginLimiter = require("../middleware/rateLimiter");
+const { validateLogin } = require("../middleware/validate");
 
 // =========================
 // ROUTES PUBLIQUES (tout le monde peut y accéder)
 // =========================
 
 // Login - public
-router.post("/login", async (req, res) => {
+router.post("/login", loginLimiter, validateLogin,async (req, res) => {
   try {
     const { email, password } = req.body;
 
@@ -45,8 +47,23 @@ console.log("MATCH :", isMatch);
         nom: user.nomComplet
       },
        process.env.JWT_SECRET,
-      { expiresIn: "7d" }
+      { expiresIn: "15m"}
     );
+    // Refresh token - 7 jours
+const refreshToken = jwt.sign(
+  { id: user.id },
+  process.env.JWT_REFRESH_SECRET || "REFRESH_SECRET_PFE_2026",
+  { expiresIn: "7d" }
+);
+
+// Stocker le refresh token dans un cookie HttpOnly
+res.cookie("refreshToken", refreshToken, {
+  httpOnly: true,       // inaccessible au JS → sécurisé
+  sameSite: "strict",
+  secure: false,        // true en production HTTPS
+  maxAge: 7 * 24 * 60 * 60 * 1000 // 7 jours
+});
+
 
     res.status(200).json({
       message: "Connexion réussie",
@@ -130,7 +147,7 @@ router.post("/register", authMiddleware(["agent", "president"]), upload.single("
 // =========================
 
 // 1. Recherche d'utilisateurs
-router.get("/search", authMiddleware(["agent", "president"]), async (req, res) => {
+router.get("/search", authMiddleware(["agent", "president","secretariat","comptable"]), async (req, res) => {
   const { term } = req.query;
   try {
     const users = await User.findAll({
@@ -151,7 +168,7 @@ router.get("/search", authMiddleware(["agent", "president"]), async (req, res) =
 });
 
 // 2. Récupérer tous les utilisateurs
-router.get("/all", authMiddleware(["agent", "president"]), async (req, res) => {
+router.get("/all", authMiddleware(["agent", "president","secretariat","comptable"]), async (req, res) => {
   try {
     const users = await User.findAll();
     res.status(200).json(users);
@@ -193,7 +210,7 @@ router.delete("/:id", authMiddleware(["agent", "president"]), async (req, res) =
 });
 
 // 5. Modifier un utilisateur
-router.put("/:id", authMiddleware(["agent", "president"]), upload.single("photo"), async (req, res) => {
+router.put("/:id", authMiddleware(["agent", "president","secretariat","comptable"]), upload.single("photo"), async (req, res) => {
   try {
     const { id } = req.params;
     const updateData = { ...req.body };
@@ -262,9 +279,26 @@ router.post("/change-password", authMiddleware([]), async (req, res) => {
     res.status(500).json({ message: "Erreur serveur", error: err.message });
   }
 });
+// routes/userRoutes.js
+router.post("/reset-password/:id", authMiddleware(["secretariat", "president"]), async (req, res) => {
+  try {
+    const user = await User.findByPk(req.params.id);
+    if (!user) return res.status(404).json({ message: "Utilisateur introuvable" });
 
+    // Génère un mot de passe lisible
+    const newPassword = `COS-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+
+    user.password          = await bcrypt.hash(newPassword, 10);
+    user.generatedPassword = newPassword;   // ← stocke en clair pour l'afficher
+    await user.save();
+
+    res.json({ generatedPassword: newPassword });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
 // 7. Récupérer son propre profil
-router.get("/me", authMiddleware(["agent", "president"]), async (req, res) => {
+router.get("/me", authMiddleware(["agent", "president","comptable","secretariat","ingenieur","beneficiaire"]), async (req, res) => {
   try {
     console.log("REQ USER:", req.user);
 
@@ -284,5 +318,49 @@ router.get("/me", authMiddleware(["agent", "president"]), async (req, res) => {
     res.status(500).json({ message: "Erreur serveur", error: err.message });
   }
 });
+// Renouveler l'access token
+router.post("/refresh", (req, res) => {
+  const refreshToken = req.cookies.refreshToken;
 
+  if (!refreshToken) {
+    return res.status(401).json({ message: "Refresh token manquant" });
+  }
+
+  try {
+    const decoded = jwt.verify(
+      refreshToken,
+      process.env.JWT_REFRESH_SECRET || "REFRESH_SECRET_PFE_2026"
+    );
+
+    const newToken = jwt.sign(
+      { id: decoded.id },
+      process.env.JWT_SECRET,
+      { expiresIn: "15m" }
+    );
+
+    res.json({ token: newToken });
+  } catch (err) {
+    return res.status(403).json({ message: "Refresh token invalide" });
+  }
+});
+
+// Logou// Nouvelle route dans ton router users
+router.post("/public-key",  authMiddleware(["agent", "beneficiaire", "president"]), async (req, res) => {
+  await User.update(
+    { publicKey: req.body.publicKey },
+    { where: { id: req.user.id } }
+  );
+  res.json({ ok: true });
+});
+
+// GET pour récupérer la clé publique d'un destinataire
+router.get("/:id/public-key", authMiddleware(["agent", "beneficiaire", "president"]), async (req, res) => {
+  const user = await User.findByPk(req.params.id, { attributes: ["publicKey"] });
+  if (!user) return res.status(404).json({ message: "Utilisateur introuvable" });
+  res.json({ publicKey: user?.publicKey });
+});
+router.post("/logout", (req, res) => {
+  res.clearCookie("refreshToken", { httpOnly: true, sameSite: "strict" });
+  res.json({ message: "Déconnecté avec succès" });
+});
 module.exports = router;

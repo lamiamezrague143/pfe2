@@ -4,10 +4,13 @@ const cors = require("cors");
 const path = require("path");
 const fs = require("fs");
 const http = require("http");
+const helmet = require("helmet");
 const { Server } = require("socket.io");
 const app = express();
-// ✅ AJOUT IMPORTANT ICI
+app.use(helmet()); // ← AJOUTE
 require("./models/association");
+// ✅ AJOUT IMPORTANT ICI
+
 
 const server = http.createServer(app);
 
@@ -44,6 +47,11 @@ const prixPrestationsRoutes = require("./routes/prixPrestationsRoutes");
 const noteRoutes = require("./routes/noteRoutes");
 const archiveRoutes = require('./routes/archiveRoutes');
 const typesprestations = require('./routes/typesprestationsRoutes')
+
+
+
+const statutDossierRoutes = require('./routes/statutDossierRoutes');
+
 //const loginRoutes = require("./routes/loginRoutes");
 app.use(session({
   secret: 'votre_secret_ummto', // Change ceci par une phrase aléatoire
@@ -55,12 +63,19 @@ app.use(session({
 // --- MIDDLEWARES ---
 app.use(cors({
   origin: "http://localhost:3000", // Port de ton Next.js
-  methods: ["GET", "POST", "PUT", "DELETE"],
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH"], // ← ajoute PATCH
+  allowedHeaders: ["Content-Type", "Authorization"],   // ← ajoute ça
   credentials: true
 }));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
+// APRÈS — ajoute le type multipart accepté
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ extended: true, limit: "50mb" }));
+app.use((req, res, next) => {
+  if (req.headers['content-type']?.startsWith('multipart/form-data')) {
+    return next(); // laisser multer gérer
+  }
+  next();
+});
 // Dans ton server.js côté Backend
 
 // ... (après tes middlewares comme app.use(cors()))
@@ -85,7 +100,7 @@ app.use("/api/notes", noteRoutes);
 app.use('/api/archives', archiveRoutes);
 //app.use("/api", loginRoutes);
 app.use("/api/prix-prestations", prixPrestationsRoutes);
-
+app.use('/api/statut-dossiers', statutDossierRoutes);
 app.get("/api/test", (req, res) => {
   res.json({ message: "Backend fonctionne !" });
 });

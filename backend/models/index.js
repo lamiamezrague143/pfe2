@@ -1,41 +1,42 @@
 const { sequelize } = require("../config/db");
 
+// ── Imports des modèles ───────────────────────────────────────
+const User          = require("./User");
+const Dossier       = require("./Dossier");
+const PieceDossier  = require("./PieceDossier");
+const Prestation    = require("./Prestation");
+const StatutDossier = require("./StatutDossier");
+const Prise         = require("./Prise");
+const Clinique      = require("./Clinique");
+const Setting       = require("./Setting");
 
+// ── Associations ──────────────────────────────────────────────
 
+// Dossier ↔ PieceDossier
+Dossier.hasMany(PieceDossier,      { foreignKey: "dossierId",    as: "piecesJointes" });
+PieceDossier.belongsTo(Dossier,    { foreignKey: "dossierId" });
 
+// PieceDossier ↔ Prestation
+PieceDossier.belongsTo(Prestation, { foreignKey: "prestationId" });
+Prestation.hasMany(PieceDossier,   { foreignKey: "prestationId" });
 
+// StatutDossier ↔ User
+StatutDossier.belongsTo(User,      { foreignKey: "userId" });
+User.hasMany(StatutDossier,        { foreignKey: "userId" });
 
-// ✅ importer directement
-const User = require("./User");
-const Prise = require("./Prise");
-const Clinique = require("./Clinique");
-const Dossier = require("./Dossier");
-const PieceDossier = require("./PieceDossier");
-const Prestation = require("./Prestation");
-const Setting = require('./Setting');
+// Prise ↔ User
+User.hasMany(Prise,                { foreignKey: "userId", as: "historique" });
+Prise.belongsTo(User,              { foreignKey: "userId" });
 
-// Relations
-User.hasMany(Prise, { foreignKey: "userId", as: "historique" });
-Prise.belongsTo(User, { foreignKey: "userId" });
-
-// Dans models/index.js
-Dossier.hasMany(PieceDossier, { 
-  foreignKey: 'dossierId', 
-  as: 'piecesJointes' 
-});
-
-PieceDossier.belongsTo(Dossier, { 
-  foreignKey: 'dossierId' 
-});
-
-// Export
-module.exports = { 
-  sequelize, 
-  User, 
-  Prise, 
-  Clinique,
-  Dossier, 
+// ── Export ────────────────────────────────────────────────────
+module.exports = {
+  sequelize,
+  User,
+  Dossier,
   PieceDossier,
   Prestation,
-  Setting
+  StatutDossier,
+  Prise,
+  Clinique,
+  Setting,
 };

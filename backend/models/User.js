@@ -99,6 +99,15 @@ resetPasswordToken: {
   type: DataTypes.STRING,
   allowNull: true,
 },
+generatedPassword: {
+  type: DataTypes.STRING,
+  allowNull: true,
+},
+// Ajouter dans models/User.js
+publicKey: {
+  type: DataTypes.TEXT,
+  allowNull: true,
+},
 }, {
   timestamps: true, // utilise createdAt et updatedAt
 });

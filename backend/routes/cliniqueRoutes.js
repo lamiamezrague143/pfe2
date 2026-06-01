@@ -47,7 +47,7 @@ router.post("/register", authMiddleware(["agent", "president"]), async (req, res
 });
 
 // --- RÉCUPÉRER TOUTES LES CONVENTIONS (agent + président)
-router.get("/all", authMiddleware([]), async (req, res) => {
+router.get("/all", authMiddleware(["agent","president","beneficiaire","comptable"]), async (req, res) => {
   try {
     const [rows] = await sequelize.query("SELECT * FROM clinics ORDER BY dateAjout DESC");
 
