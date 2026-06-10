@@ -13,13 +13,13 @@
     "@heroicons/react": "^2.2.0",
     "agora-access-token": "^2.0.4",
     "agora-rtc-sdk-ng": "^4.24.2",
-    "axios": "^1.13.2",
+    "axios": "^1.17.0",
     "cloudinary": "^2.8.0",
     "date-fns": "^4.1.0",
     "framer-motion": "^12.29.2",
     "lucide-react": "^0.552.0",
     "multer": "^2.0.2",
-    "next": "^16.1.6",
+    "next": "^16.2.6",
     "next-qrcode": "^2.5.1",
     "qrcode.react": "^4.2.0",
     "react": "^19.2.0",
@@ -36,7 +36,7 @@
     "babel-plugin-react-compiler": "1.0.0",
     "eslint": "^9",
     "eslint-config-next": "16.0.1",
-    "postcss": "^8.5.8",
+    "postcss": "^8.5.10",
     "tailwindcss": "^3.4.4"
   }
 }
