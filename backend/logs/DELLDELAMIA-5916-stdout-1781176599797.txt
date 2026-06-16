@@ -1,0 +1,4 @@
+[dotenv@17.3.1] injecting env (6) from .env -- tip: ⚙️  load multiple .env files with { path: ['.env.local', '.env'] }
+✅ Base de données synchronisée.
+✅ Paramètres de plafonds initialisés.
+🚀 Serveur lancé sur http://localhost:\\.\pipe\f0fdee57-5b7f-49cc-9bd1-1fc0adabc39c

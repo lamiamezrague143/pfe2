@@ -1,0 +1,4 @@
+[dotenv@17.3.1] injecting env (6) from .env -- tip: ⚙️  suppress all logs with { quiet: true }
+✅ Base de données synchronisée.
+✅ Paramètres de plafonds initialisés.
+🚀 Serveur lancé sur http://localhost:\\.\pipe\87982974-3ecd-48ff-b4b8-05e3021b1f6f
