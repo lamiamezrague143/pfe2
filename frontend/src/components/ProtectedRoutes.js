@@ -10,8 +10,13 @@ function getCookie(name) {
 }
 
 function getUser() {
-  const token = getCookie("token"); // ✅ lit le cookie au lieu de localStorage
-  const role = localStorage.getItem("role");
+  const token = getCookie("token");
+  let role = null;
+  if (token) {
+    try {
+      role = JSON.parse(atob(token.split(".")[1])).role;
+    } catch {}
+  }
   return { token, role };
 }
 
@@ -21,17 +26,20 @@ export default function ProtectedRoutes({ children, roles = [] }) {
 
   useEffect(() => {
     const { token, role } = getUser();
+    console.log("TOKEN:", token);
+    console.log("ROLE:", role);
+    console.log("ROLES ATTENDUS:", roles);
 
     if (!token) {
+      console.log("→ pas de token, redirect");
       router.replace("/");
       return;
     }
-
     if (roles.length > 0 && !roles.includes(role)) {
+      console.log("→ role non autorisé, redirect");
       router.replace("/");
       return;
     }
-
     setLoading(false);
   }, []);
 

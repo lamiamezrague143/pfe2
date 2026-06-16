@@ -9,6 +9,7 @@ const authMiddleware = require("../middleware/authMiddleware");
 const jwt = require("jsonwebtoken");
 const loginLimiter = require("../middleware/rateLimiter");
 const { validateLogin } = require("../middleware/validate");
+const { generateKeyPair } = require('../utils/crypto');
 
 // =========================
 // ROUTES PUBLIQUES (tout le monde peut y accéder)
@@ -44,7 +45,8 @@ console.log("MATCH :", isMatch);
       {
         id: user.id,
         role: user.roleSystem,
-        nom: user.nomComplet
+        nom: user.nomComplet,
+        prenom: user.prenomComplet
       },
        process.env.JWT_SECRET,
       { expiresIn: "15m"}
@@ -319,21 +321,24 @@ router.get("/me", authMiddleware(["agent", "president","comptable","secretariat"
   }
 });
 // Renouveler l'access token
-router.post("/refresh", (req, res) => {
+router.post("/refresh", async (req, res) => {
   const refreshToken = req.cookies.refreshToken;
-
-  if (!refreshToken) {
-    return res.status(401).json({ message: "Refresh token manquant" });
-  }
+  if (!refreshToken) return res.status(401).json({ message: "Refresh token manquant" });
 
   try {
-    const decoded = jwt.verify(
-      refreshToken,
-      process.env.JWT_REFRESH_SECRET || "REFRESH_SECRET_PFE_2026"
-    );
+    const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET || "REFRESH_SECRET_PFE_2026");
+
+    // Récupère le user depuis la DB pour avoir nom + prenom
+    const user = await User.findByPk(decoded.id);
+    if (!user) return res.status(404).json({ message: "Utilisateur introuvable" });
 
     const newToken = jwt.sign(
-      { id: decoded.id },
+      {
+        id: user.id,
+        role: user.roleSystem,
+        nom: user.nomComplet,
+        prenom: user.prenomComplet   // ← ajouté
+      },
       process.env.JWT_SECRET,
       { expiresIn: "15m" }
     );
@@ -344,23 +349,70 @@ router.post("/refresh", (req, res) => {
   }
 });
 
-// Logou// Nouvelle route dans ton router users
-router.post("/public-key",  authMiddleware(["agent", "beneficiaire", "president"]), async (req, res) => {
-  await User.update(
-    { publicKey: req.body.publicKey },
-    { where: { id: req.user.id } }
-  );
-  res.json({ ok: true });
+// Colonne à ajouter dans ta table users :
+// ALTER TABLE users ADD COLUMN publicKey TEXT NULL;
+
+
+// GET /api/users/public-key/:userId — récupérer la clé publique d'un utilisateur
+
+// ✅ POST — enregistrer sa clé publique
+router.post("/public-key", authMiddleware(["agent", "beneficiaire", "secretariat", "president"]), async (req, res) => {
+  try {
+    const { publicKey } = req.body;
+    if (!publicKey) return res.status(400).json({ message: "Clé publique manquante." });
+
+    await User.update({ publicKey }, { where: { id: req.user.id } });
+    res.json({ message: "Clé publique enregistrée." });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Erreur serveur." });
+  }
 });
 
-// GET pour récupérer la clé publique d'un destinataire
-router.get("/:id/public-key", authMiddleware(["agent", "beneficiaire", "president"]), async (req, res) => {
-  const user = await User.findByPk(req.params.id, { attributes: ["publicKey"] });
-  if (!user) return res.status(404).json({ message: "Utilisateur introuvable" });
-  res.json({ publicKey: user?.publicKey });
+// ✅ GET — récupérer la clé publique + générer si absente
+router.get('/public-key/:id', async (req, res) => {
+  const userId = req.params.id;
+
+  try {
+    const user = await User.findByPk(userId);
+
+    if (!user)
+      return res.status(404).json({ message: 'Utilisateur introuvable.' });
+
+    // Régénère si l'une des deux clés manque
+    if (!user.publicKey || !user.privateKey) {
+      const { publicKey, privateKey } = generateKeyPair();
+      await user.update({ publicKey, privateKey });
+      await user.reload();
+    }
+
+    res.json({ publicKey: user.publicKey });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Erreur serveur.' });
+  }
 });
 router.post("/logout", (req, res) => {
   res.clearCookie("refreshToken", { httpOnly: true, sameSite: "strict" });
   res.json({ message: "Déconnecté avec succès" });
+});
+// routes/users.js
+router.get("/admin-key", async (req, res) => {
+  try {
+    // Trouver un utilisateur admin/agent disponible
+    const admin = await User.findOne({
+      where: { role: ["president", "agent", "beneficiaire"] }, // adapte selon tes rôles
+    });
+
+    if (!admin) return res.status(404).json({ message: "Aucun admin trouvé" });
+
+    res.json({
+      adminId: admin.id,
+      publicKey: admin.publicKey, // ✅ retourner la clé publique
+    });
+  } catch (e) {
+    res.status(500).json({ message: "Erreur serveur" });
+  }
 });
 module.exports = router;

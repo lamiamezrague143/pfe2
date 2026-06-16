@@ -23,7 +23,7 @@ const Message = require("./models/Message");
 // --- CORRECTION ICI : Utilisez ./ car server.js est au même niveau que le dossier models ---
 const Etat = require('./models/Etat');
 const LigneEtat = require('./models/LigneEtat');
-
+const PasswordResetOtp = require('./models/PasswordResetOtp'); 
 // --- Import des Routes ---
 const priseRoutes = require("./routes/priseRoutes");
 const userRoutes = require("./routes/userRoutes");
@@ -48,6 +48,8 @@ const noteRoutes = require("./routes/noteRoutes");
 const archiveRoutes = require('./routes/archiveRoutes');
 const typesprestations = require('./routes/typesprestationsRoutes')
 
+// Vérifie que tu as bien ça dans app.js
+const authRoutes = require('./routes/authRoutes');
 
 
 const statutDossierRoutes = require('./routes/statutDossierRoutes');
@@ -62,7 +64,7 @@ app.use(session({
 // ... reste du code identique
 // --- MIDDLEWARES ---
 app.use(cors({
-  origin: "http://localhost:3000", // Port de ton Next.js
+  origin: ["http://localhost:3000", "http://localhost"],// Port de ton Next.js
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH"], // ← ajoute PATCH
   allowedHeaders: ["Content-Type", "Authorization"],   // ← ajoute ça
   credentials: true
@@ -104,7 +106,7 @@ app.use('/api/statut-dossiers', statutDossierRoutes);
 app.get("/api/test", (req, res) => {
   res.json({ message: "Backend fonctionne !" });
 });
-
+app.use('/api/auth', authRoutes);
 
 // --- LOGIQUE D'INITIALISATION ---
 const initSettings = async () => {

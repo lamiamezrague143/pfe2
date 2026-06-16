@@ -4,7 +4,7 @@ const Agent = require("../models/Agent");
 const authMiddleware = require("../middleware/authMiddleware"); // 🔐 IMPORTANT
 
 // 📥 GET ALL (président uniquement)
-router.get("/", authMiddleware(["president"]), async (req, res) => {
+router.get("/", authMiddleware(["president","agent"]), async (req, res) => {
   try {
     const agents = await Agent.findAll();
     res.json(agents);
@@ -14,7 +14,7 @@ router.get("/", authMiddleware(["president"]), async (req, res) => {
 });
 
 // 📥 GET BY ID (président uniquement)
-router.get("/:id", authMiddleware(["president"]), async (req, res) => {
+router.get("/:id", authMiddleware(["president","agent"]), async (req, res) => {
   try {
     const agent = await Agent.findByPk(req.params.id);
     res.json(agent);

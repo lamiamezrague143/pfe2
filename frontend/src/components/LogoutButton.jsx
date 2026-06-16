@@ -9,6 +9,7 @@ export default function LogoutButton() {
     localStorage.removeItem("token");
     localStorage.removeItem("role");
     localStorage.removeItem("user");
+      document.cookie = "token=; path=/; max-age=0"; // ✅ vider le cookie
     router.push("/");
   };
 

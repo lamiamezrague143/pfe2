@@ -53,21 +53,23 @@ console.log("EXCEL RAW JSON =>", json);
       const validRows = [];
       const invalidRows = [];
 
-    json.forEach((row, i) => {
-  const nom = String(row.nom_analyse || "").trim();
+json.forEach((row, i) => {
+  // Normaliser toutes les clés : lowercase + trim
+  const normalized = {};
+  Object.keys(row).forEach(k => {
+    normalized[k.toLowerCase().trim()] = row[k];
+  });
 
-  const prixRaw = String(row.prix || "")
+  const nom = String(normalized.nom_analyse || "").trim();
+
+  const prixRaw = String(normalized.prix || "")
     .replace(/\s/g, "")
     .replace(",", ".");
 
   const prix = parseFloat(prixRaw);
 
   if (!nom || isNaN(prix) || prix <= 0) {
-    invalidRows.push({
-      ligne: i + 2,
-      nom,
-      prix: row.prix
-    });
+    invalidRows.push({ ligne: i + 2, nom, prix: normalized.prix });
   } else {
     validRows.push({ nom, prix });
   }

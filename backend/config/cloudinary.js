@@ -10,12 +10,37 @@ cloudinary.config({
 
 const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
-  params: {
-    folder: 'pfe_uploads', // Nom du dossier sur Cloudinary
-    allowed_formats: ['jpg', 'png', 'jpeg'],
+  params: async (req, file) => {
+    const isPDF = file.mimetype === 'application/pdf';
+
+    return {
+      folder: 'pfe_uploads',
+      resource_type: isPDF ? 'raw' : 'image', // ⚠️ PDF = 'raw', image = 'image'
+      allowed_formats: ['jpg', 'png', 'jpeg', 'pdf'],
+    };
   },
 });
 
-const upload = multer({ storage: storage });
+// ✅ Filtre : accepte images + PDF uniquement
+const fileFilter = (req, file, cb) => {
+  const allowedMimetypes = [
+    'image/jpeg',
+    'image/jpg',
+    'image/png',
+    'application/pdf',
+  ];
+
+  if (allowedMimetypes.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(new Error('Type de fichier non supporté. Utilisez JPG, PNG ou PDF.'), false);
+  }
+};
+
+const upload = multer({
+  storage,
+  fileFilter,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB max
+});
 
 module.exports = { upload, cloudinary };

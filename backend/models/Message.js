@@ -32,7 +32,11 @@ const Message = sequelize.define("Message", {
   image: {
   type: DataTypes.STRING,
   allowNull: true,
-}
+},
+contentForSender: {
+  type: DataTypes.TEXT,
+  allowNull: true,
+},
 }, {
   timestamps: true, // createdAt + updatedAt
 });

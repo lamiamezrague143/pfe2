@@ -73,6 +73,10 @@ export default function AddTeacherForm() {
     if (newAyantDroit.lien === "Enfant" && newAyantDroit.sexe === "Féminin" && newAyantDroit.situationMatrimoniale === "Marié(e)") {
       alert("Erreur : Une fille mariée ne peut plus être déclarée comme ayant droit."); return;
     }
+    if (newAyantDroit.lien === "Enfant" && newAyantDroit.sexe === "Masculin" && newAyantDroit.situationMatrimoniale === "Marié(e)") {
+  setAyantDroitError("❌ Un fils marié ne peut pas être déclaré ayant droit.");
+  return;
+}
     setAyantDroits([...ayantDroits, newAyantDroit]);
     setNewAyantDroit({ nom: "", prenom: "", dateNaissance: "", lieuNaissance: "", lien: "", sexe: "Masculin", situationMatrimoniale: "Célibataire", photo: null });
   };

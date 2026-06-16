@@ -35,29 +35,27 @@ include: [
 });
 
 // 🟢 POST MESSAGE — accessible par tous les connectés
-router.post("/", authMiddleware(["agent", "beneficiaire","president"]), upload.single("image"), async (req, res) => {
-  const { senderId, receiverId, content } = req.body;
+router.post("/", authMiddleware(["agent", "beneficiaire", "president"]), upload.single("image"), async (req, res) => {
+  const { receiverId, content, contentForSender } = req.body; // ← ajouter contentForSender
 
   try {
     const message = await Message.create({
-      senderId: req.user.id, // ✅ toujours depuis le token, jamais depuis le body
+      senderId: req.user.id,
       receiverId: receiverId || 2,
       content: content || "",
+      contentForSender: contentForSender || null, // ← sauvegarder
       image: req.file?.path || null,
     });
 
-    // ✅ Recharger avec le nom du sender
     const messageComplet = await Message.findByPk(message.id, {
-     // Dans GET "/" et POST "/" — les deux endroits
-include: [
-  { model: User, as: "sender", attributes: ["id", "nomComplet", "prenomComplet"] },
-],
+      include: [
+        { model: User, as: "sender", attributes: ["id", "nomComplet", "prenomComplet"] },
+      ],
     });
 
-    // ✅ Broadcaster via socket
     const io = req.app.get("io");
     if (io) {
-      io.emit("receive_message", messageComplet);
+      io.emit("receive_message", messageComplet); // ← messageComplet contient déjà contentForSender
     }
 
     res.status(201).json(messageComplet);

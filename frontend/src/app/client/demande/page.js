@@ -3,7 +3,8 @@ import React, { useState, useEffect, useRef } from "react";
 import { apiFetch } from "../../../lib/api";
 import {
   Send, Clock, CheckCircle, XCircle, FileText,
-  Upload, X, Paperclip, Eye, RefreshCw ,  User, Users   
+  Upload, X, Paperclip, Eye, RefreshCw, User, Users,
+  Download, Bell, Shield
 } from "lucide-react";
 import ChatPanel from "../../../components/ChatPanel";
 
@@ -123,8 +124,122 @@ function PiecesModal({ pieces, onClose }) {
   );
 }
 
+// ─── MODAL PEC ────────────────────────────────────────────────────────────────
+function PECModal({ demande, onClose }) {
+  if (!demande?.fichier_prise_en_charge) return null;
+
+  const url = demande.fichier_prise_en_charge.startsWith("http")
+    ? demande.fichier_prise_en_charge
+    : `http://localhost:5001/${demande.fichier_prise_en_charge.replace(/^\//, "")}`;
+
+ // ✅ APRÈS — Cloudinary stocke les PDFs en /raw/ sans extension
+const isPdf =
+  url.toLowerCase().includes(".pdf") ||
+  url.toLowerCase().includes("/raw/") ||
+  demande.fichier_prise_en_charge.toLowerCase().includes("pdf");
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full sm:max-w-lg mx-0 sm:mx-4 overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="bg-gradient-to-r from-indigo-600 to-blue-600 p-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center">
+              <Shield size={16} className="text-white" />
+            </div>
+            <div>
+              <p className="text-white font-black text-sm">Votre Prise en Charge</p>
+              <p className="text-white/60 text-[11px]">{demande.type_prestation}</p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center text-white transition"
+          >
+            <X size={15} />
+          </button>
+        </div>
+
+        {/* Infos dossier */}
+        <div className="p-4 border-b border-slate-100 bg-slate-50 grid grid-cols-2 gap-3 text-xs">
+          <div>
+            <p className="text-slate-400 font-bold uppercase text-[9px] mb-0.5">Bénéficiaire</p>
+            <p className="font-bold text-slate-800">{demande.nom_beneficiaire}</p>
+          </div>
+          <div>
+            <p className="text-slate-400 font-bold uppercase text-[9px] mb-0.5">Dossier</p>
+            <p className="font-bold text-slate-800 font-mono">#{demande.id}</p>
+          </div>
+          <div>
+            <p className="text-slate-400 font-bold uppercase text-[9px] mb-0.5">Prestation</p>
+            <p className="font-semibold text-slate-700">{demande.type_prestation}</p>
+          </div>
+          <div>
+            <p className="text-slate-400 font-bold uppercase text-[9px] mb-0.5">Statut</p>
+            <StatusBadge status={demande.statut} />
+          </div>
+          {demande.message_admin && (
+            <div className="col-span-2 bg-indigo-50 border border-indigo-100 rounded-xl p-2.5">
+              <p className="text-[10px] font-bold text-indigo-600 uppercase mb-1">Note de la structure</p>
+              <p className="text-xs text-indigo-800 italic">"{demande.message_admin}"</p>
+            </div>
+          )}
+        </div>
+
+        {/* Preview */}
+        <div className="p-4">
+          {isPdf ? (
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-center">
+              <div className="w-12 h-12 rounded-xl bg-red-50 border border-red-100 flex items-center justify-center mx-auto mb-3">
+                <FileText size={22} className="text-red-500" />
+              </div>
+              <p className="text-sm font-bold text-slate-700 mb-0.5">Document PDF</p>
+              <p className="text-[11px] text-slate-400 mb-4">Votre prise en charge officielle est prête</p>
+              <a
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold px-5 py-2.5 rounded-xl transition shadow-lg shadow-indigo-500/25"
+              >
+                <Eye size={15} /> Ouvrir le document
+              </a>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <img
+                src={url}
+                alt="Prise en charge"
+                className="w-full rounded-xl border border-slate-200 shadow-sm object-contain max-h-64"
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Bouton télécharger */}
+        <div className="px-4 pb-4">
+          <a
+            href={url}
+            download={`PEC_${demande.id}_${demande.nom_beneficiaire || ""}.pdf`}
+            className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-sm font-bold py-3 rounded-xl transition shadow-lg shadow-emerald-500/25"
+          >
+            <Download size={16} /> Télécharger la Prise en Charge
+          </a>
+          <p className="text-[10px] text-slate-400 text-center mt-2">
+            Conservez ce document — il est requis lors de votre consultation.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── CARTE DEMANDE (mobile) ───────────────────────────────────────────────────
-function DemandeCard({ d, onViewPieces }) {
+function DemandeCard({ d, onViewPieces, onViewPEC }) {
   let pieces = [];
   try {
     if (d.pieces) pieces = typeof d.pieces === "string" ? JSON.parse(d.pieces) : d.pieces;
@@ -132,16 +247,27 @@ function DemandeCard({ d, onViewPieces }) {
 
   const isValidee = d.statut === "Validée";
   const isRejetee = d.statut === "Rejetée";
+  const hasPEC    = !!d.fichier_prise_en_charge;
 
   return (
     <div className={`bg-white rounded-xl border border-slate-100 shadow-sm shadow-slate-200 overflow-hidden border-l-4 ${
+      hasPEC ? "border-l-indigo-500" :
       isValidee ? "border-l-emerald-500" : isRejetee ? "border-l-red-400" : "border-l-amber-400"
     }`}>
       <div className="p-4">
+        {/* Header carte */}
         <div className="flex items-start justify-between gap-2 mb-3">
           <div>
             <span className="text-[10px] font-bold text-slate-400 font-mono">#{d.id}</span>
-            <p className="font-bold text-slate-800 text-sm mt-0.5">{d.nom_beneficiaire}</p>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <p className="font-bold text-slate-800 text-sm">{d.nom_beneficiaire}</p>
+              {hasPEC && (
+                <span className="relative flex h-2 w-2 shrink-0">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500" />
+                </span>
+              )}
+            </div>
             <p className="text-xs text-slate-400 mt-0.5">{d.type_prestation}</p>
             <p className="text-[10px] text-slate-300 mt-0.5">
               {new Date(d.createdAt).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" })}
@@ -150,7 +276,27 @@ function DemandeCard({ d, onViewPieces }) {
           <StatusBadge status={d.statut} />
         </div>
 
-        {d.statut !== "En attente" && (
+        {/* Bannière PEC disponible */}
+        {hasPEC && (
+          <div className="bg-indigo-50 border border-indigo-200 rounded-xl px-3 py-2.5 mb-3 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Shield size={14} className="text-indigo-600 shrink-0" />
+              <div>
+                <p className="text-xs font-black text-indigo-800">Prise en charge disponible</p>
+                <p className="text-[10px] text-indigo-500">Cliquez pour consulter votre document</p>
+              </div>
+            </div>
+            <button
+              onClick={() => onViewPEC(d)}
+              className="shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-black px-2.5 py-1.5 rounded-lg transition flex items-center gap-1"
+            >
+              <Download size={11} /> PEC
+            </button>
+          </div>
+        )}
+
+        {/* Message décision */}
+        {d.statut !== "En attente" && !hasPEC && (
           <div className={`text-xs rounded-xl px-3 py-2 mb-3 ${isValidee ? "bg-emerald-50 text-emerald-800 border border-emerald-100" : "bg-red-50 text-red-800 border border-red-100"}`}>
             <p className="font-bold mb-0.5">{isValidee ? "✅ Acceptée" : "❌ Refusée"}</p>
             {d.message_admin
@@ -164,8 +310,10 @@ function DemandeCard({ d, onViewPieces }) {
         )}
 
         {pieces.length > 0 && (
-          <button onClick={() => onViewPieces(pieces)}
-            className="inline-flex items-center gap-1.5 text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-1.5 rounded-full hover:bg-emerald-100 transition">
+          <button
+            onClick={() => onViewPieces(pieces)}
+            className="inline-flex items-center gap-1.5 text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-1.5 rounded-full hover:bg-emerald-100 transition"
+          >
             <Eye size={12} /> {pieces.length} fichier{pieces.length > 1 ? "s" : ""}
           </button>
         )}
@@ -182,6 +330,7 @@ export default function DemandePage() {
   const [submitLoading, setSubmitLoading]   = useState(false);
   const [submitMsg, setSubmitMsg]           = useState({ text: "", type: "" });
   const [selectedPieces, setSelectedPieces] = useState(null);
+  const [selectedPEC, setSelectedPEC]       = useState(null); // ← nouveau
   const [captchaSvg, setCaptchaSvg]         = useState("");
   const [userCaptcha, setUserCaptcha]       = useState("");
   const [prenom, setPrenom]                 = useState("");
@@ -196,12 +345,13 @@ export default function DemandePage() {
   const [typesPrestations, setTypesPrestations] = useState([]);
   const [etablissement, setEtablissement]   = useState("");
   const [listeCliniques, setListeCliniques] = useState([]);
-const [pourQui, setPourQui]         = useState("moi"); // "moi" | "autre"
-const [ayantPrenom, setAyantPrenom] = useState("");
-const [ayantNom, setAyantNom]       = useState("");
-const [ayantLien, setAyantLien]     = useState("");
-const [ayantDateNaiss, setAyantDateNaiss] = useState("");
-const [ayantTelephone, setAyantTelephone] = useState("");
+  const [pourQui, setPourQui]               = useState("moi");
+  const [ayantPrenom, setAyantPrenom]       = useState("");
+  const [ayantNom, setAyantNom]             = useState("");
+  const [ayantLien, setAyantLien]           = useState("");
+  const [ayantDateNaiss, setAyantDateNaiss] = useState("");
+  const [ayantTelephone, setAyantTelephone] = useState("");
+
   const refreshCaptcha = async () => {
     try {
       const res = await fetch(`${API_BASE}/captcha`);
@@ -230,8 +380,15 @@ const [ayantTelephone, setAyantTelephone] = useState("");
     finally { setFetchLoading(false); }
   };
 
-  useEffect(() => { if (activeTab === "list") fetchDemandes(); }, [activeTab]);
-
+// Remplace l'useEffect existant
+useEffect(() => {
+  if (activeTab === "list") {
+    fetchDemandes();
+    // ✅ Vérifie toutes les 15 secondes si une PEC est disponible
+    const interval = setInterval(fetchDemandes, 15000);
+    return () => clearInterval(interval);
+  }
+}, [activeTab]);
   useEffect(() => {
     const fetchTypes = async () => {
       try {
@@ -270,6 +427,14 @@ const [ayantTelephone, setAyantTelephone] = useState("");
     fd.append("etablissement", etablissement);
     fd.append("captcha", userCaptcha);
     fichiers.forEach((f) => fd.append("ordonnance", f));
+    fd.append("pour_qui", pourQui);
+if (pourQui === "autre") {
+  fd.append("ayant_prenom",     ayantPrenom);
+  fd.append("ayant_nom",        ayantNom);
+  fd.append("ayant_lien",       ayantLien);
+  fd.append("ayant_date_naiss", ayantDateNaiss);
+  fd.append("ayant_telephone",  ayantTelephone);
+}
     try {
       await apiFetch("/demandes/ajouter", { method: "POST", body: fd });
       setSubmitMsg({ text: "✅ Dossier envoyé avec succès !", type: "success" });
@@ -281,9 +446,10 @@ const [ayantTelephone, setAyantTelephone] = useState("");
     } finally { setSubmitLoading(false); }
   };
 
-  const nbEnAttente = demandes.filter((d) => d.statut === "En attente").length;
-  const nbValidees  = demandes.filter((d) => d.statut === "Validée").length;
-  const nbRejetees  = demandes.filter((d) => d.statut === "Rejetée").length;
+  const nbEnAttente  = demandes.filter((d) => d.statut === "En attente").length;
+  const nbValidees   = demandes.filter((d) => d.statut === "Validée").length;
+  const nbRejetees   = demandes.filter((d) => d.statut === "Rejetée").length;
+  const nbPECDispo   = demandes.filter((d) => !!d.fichier_prise_en_charge).length;
 
   const tabs = [
     { key: "form", label: "Formulaire" },
@@ -321,49 +487,50 @@ const [ayantTelephone, setAyantTelephone] = useState("");
         {/* ── FORMULAIRE ── */}
         {activeTab === "form" && (
           <div className="bg-white rounded-2xl shadow-sm shadow-slate-200 border border-slate-100 overflow-hidden max-w-3xl">
-{/* ── Pour qui ? ── */}
-<div className="px-4 sm:px-8 py-4 bg-slate-50/60 border-b border-slate-100">
-  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">La demande est pour</p>
-  <div className="flex gap-2">
-    {[
-      { key: "moi",   label: "Moi-même",      icon: <User size={15}/> },
-      { key: "autre", label: "Un ayant droit", icon: <Users size={15}/> },
-    ].map(({ key, label, icon }) => (
-      <button
-        key={key}
-        type="button"
-        onClick={() => setPourQui(key)}
-        className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold border transition ${
-          pourQui === key
-            ? "border-emerald-500 bg-emerald-50 text-emerald-800"
-            : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
-        }`}
-      >
-        {icon} {label}
-      </button>
-    ))}
-  </div>
-</div>
+            {/* Pour qui ? */}
+            <div className="px-4 sm:px-8 py-4 bg-slate-50/60 border-b border-slate-100">
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">La demande est pour</p>
+              <div className="flex gap-2">
+                {[
+                  { key: "moi",   label: "Moi-même",      icon: <User size={15}/> },
+                  { key: "autre", label: "Un ayant droit", icon: <Users size={15}/> },
+                ].map(({ key, label, icon }) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setPourQui(key)}
+                    className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold border transition ${
+                      pourQui === key
+                        ? "border-emerald-500 bg-emerald-50 text-emerald-800"
+                        : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
+                    }`}
+                  >
+                    {icon} {label}
+                  </button>
+                ))}
+              </div>
+            </div>
 
-{/* ── Infos ayant droit ── */}
-{pourQui === "autre" && (
-  <div className="px-4 sm:px-8 py-4 border-b border-slate-100 bg-amber-50/40">
-    <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest mb-3">Informations de l'ayant droit</p>
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-      <input type="text" placeholder="Prénom *" value={ayantPrenom} onChange={e => setAyantPrenom(e.target.value)} className={inputCls} />
-      <input type="text" placeholder="Nom *"    value={ayantNom}    onChange={e => setAyantNom(e.target.value)}    className={inputCls} />
-      <select value={ayantLien} onChange={e => setAyantLien(e.target.value)} className={selectCls}>
-        <option value="">Lien de parenté *</option>
-        <option>Conjoint(e)</option>
-        <option>Enfant</option>
-        <option>Père / Mère</option>
-        <option>Autre</option>
-      </select>
-      <input type="date" value={ayantDateNaiss} onChange={e => setAyantDateNaiss(e.target.value)} className={inputCls} />
-      <input type="tel" placeholder="Téléphone *" value={ayantTelephone} onChange={e => setAyantTelephone(e.target.value)} className={inputCls + " sm:col-span-2"} />
-    </div>
-  </div>
-)}
+            {/* Infos ayant droit */}
+            {pourQui === "autre" && (
+              <div className="px-4 sm:px-8 py-4 border-b border-slate-100 bg-amber-50/40">
+                <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest mb-3">Informations de l'ayant droit</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <input type="text" placeholder="Prénom *" value={ayantPrenom} onChange={e => setAyantPrenom(e.target.value)} className={inputCls} />
+                  <input type="text" placeholder="Nom *"    value={ayantNom}    onChange={e => setAyantNom(e.target.value)}    className={inputCls} />
+                  <select value={ayantLien} onChange={e => setAyantLien(e.target.value)} className={selectCls}>
+                    <option value="">Lien de parenté *</option>
+                    <option>Conjoint(e)</option>
+                    <option>Enfant</option>
+                    <option>Père / Mère</option>
+                    <option>Autre</option>
+                  </select>
+                  <input type="date" value={ayantDateNaiss} onChange={e => setAyantDateNaiss(e.target.value)} className={inputCls} />
+                  <input type="tel" placeholder="Téléphone *" value={ayantTelephone} onChange={e => setAyantTelephone(e.target.value)} className={inputCls + " sm:col-span-2"} />
+                </div>
+              </div>
+            )}
+
             {/* En-tête */}
             <div className="px-4 sm:px-8 pt-6 pb-4 border-b border-slate-100 flex items-center gap-3">
               <div className="relative shrink-0">
@@ -462,19 +629,12 @@ const [ayantTelephone, setAyantTelephone] = useState("");
                 }`}>{submitMsg.text}</div>
               )}
               <div className="flex flex-col-reverse sm:flex-row gap-2 sm:justify-end">
-                <button
-                  type="button"
-                  onClick={resetForm}
-                  className="px-5 py-2.5 text-sm font-semibold text-slate-600 border border-slate-200 rounded-xl hover:bg-slate-100 transition w-full sm:w-auto"
-                >
+                <button type="button" onClick={resetForm}
+                  className="px-5 py-2.5 text-sm font-semibold text-slate-600 border border-slate-200 rounded-xl hover:bg-slate-100 transition w-full sm:w-auto">
                   Réinitialiser
                 </button>
-                <button
-                  type="button"
-                  onClick={handleSubmit}
-                  disabled={submitLoading}
-                  className="flex items-center justify-center gap-2 px-6 py-2.5 text-sm font-bold bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl hover:from-emerald-700 hover:to-teal-700 transition disabled:opacity-60 disabled:cursor-not-allowed shadow-lg shadow-emerald-500/25 w-full sm:w-auto"
-                >
+                <button type="button" onClick={handleSubmit} disabled={submitLoading}
+                  className="flex items-center justify-center gap-2 px-6 py-2.5 text-sm font-bold bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl hover:from-emerald-700 hover:to-teal-700 transition disabled:opacity-60 disabled:cursor-not-allowed shadow-lg shadow-emerald-500/25 w-full sm:w-auto">
                   {submitLoading
                     ? <><span className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full" /> Envoi...</>
                     : <><Send size={15} /> Soumettre le Dossier</>}
@@ -487,6 +647,25 @@ const [ayantTelephone, setAyantTelephone] = useState("");
         {/* ── LISTE DES DEMANDES ── */}
         {activeTab === "list" && (
           <div className="max-w-5xl">
+
+            {/* Bannière PEC disponible */}
+            {nbPECDispo > 0 && (
+              <div className="mb-4 flex items-center gap-3 bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-3">
+                <span className="relative flex h-3 w-3 shrink-0">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-indigo-500" />
+                </span>
+                <div className="flex-1">
+                  <p className="text-xs font-black text-indigo-800">
+                    {nbPECDispo} prise{nbPECDispo > 1 ? "s" : ""} en charge disponible{nbPECDispo > 1 ? "s" : ""}
+                  </p>
+                  <p className="text-[10px] text-indigo-500 mt-0.5">
+                    Cliquez sur le bouton <strong>PEC</strong> pour consulter et télécharger votre document officiel.
+                  </p>
+                </div>
+                <Bell size={16} className="text-indigo-400 shrink-0" />
+              </div>
+            )}
 
             {/* Stats */}
             {demandes.length > 0 && (
@@ -531,7 +710,12 @@ const [ayantTelephone, setAyantTelephone] = useState("");
                 {/* Mobile : cartes */}
                 <div className="sm:hidden space-y-3">
                   {demandes.map((d) => (
-                    <DemandeCard key={d.id} d={d} onViewPieces={setSelectedPieces} />
+                    <DemandeCard
+                      key={d.id}
+                      d={d}
+                      onViewPieces={setSelectedPieces}
+                      onViewPEC={setSelectedPEC}
+                    />
                   ))}
                 </div>
 
@@ -541,7 +725,7 @@ const [ayantTelephone, setAyantTelephone] = useState("");
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="bg-slate-50 border-b border-slate-100">
-                          {["#", "Bénéficiaire / Type", "Décision", "Pièces", "État", "Motif"].map((h) => (
+                          {["#", "Bénéficiaire / Type", "Décision", "Pièces", "PEC", "État", "Motif"].map((h) => (
                             <th key={h} className="text-left px-4 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest">{h}</th>
                           ))}
                         </tr>
@@ -554,21 +738,38 @@ const [ayantTelephone, setAyantTelephone] = useState("");
                           } catch { pieces = []; }
                           const isValidee = d.statut === "Validée";
                           const isRejetee = d.statut === "Rejetée";
+                          const hasPEC    = !!d.fichier_prise_en_charge;
                           return (
                             <tr
                               key={d.id}
                               className={`hover:bg-slate-50 transition border-l-4 ${
-                                isValidee ? "border-l-emerald-500" : isRejetee ? "border-l-red-400" : "border-l-amber-400"
+                                hasPEC    ? "border-l-indigo-500" :
+                                isValidee ? "border-l-emerald-500" :
+                                isRejetee ? "border-l-red-400" : "border-l-amber-400"
                               }`}
                             >
                               <td className="px-4 py-3 text-[11px] text-slate-400 font-bold font-mono">#{d.id}</td>
+
+                              {/* Nom + point animé si PEC */}
                               <td className="px-4 py-3">
-                                <p className="font-semibold text-slate-800">{d.nom_beneficiaire}</p>
-                                <p className="text-xs text-slate-400 mt-0.5">{d.type_prestation}</p>
-                                <p className="text-[10px] text-slate-300 mt-0.5">
-                                  {new Date(d.createdAt).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" })}
-                                </p>
+                                <div className="flex items-center gap-1.5">
+                                  <div>
+                                    <p className="font-semibold text-slate-800">{d.nom_beneficiaire}</p>
+                                    <p className="text-xs text-slate-400 mt-0.5">{d.type_prestation}</p>
+                                    <p className="text-[10px] text-slate-300 mt-0.5">
+                                      {new Date(d.createdAt).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" })}
+                                    </p>
+                                  </div>
+                                  {hasPEC && (
+                                    <span className="relative flex h-2.5 w-2.5 ml-1 shrink-0">
+                                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75" />
+                                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-indigo-500" />
+                                    </span>
+                                  )}
+                                </div>
                               </td>
+
+                              {/* Décision */}
                               <td className="px-4 py-3 max-w-[200px]">
                                 {d.statut !== "En attente" ? (
                                   <div className={`text-xs rounded-xl px-3 py-2 ${isValidee ? "bg-emerald-50 text-emerald-800 border border-emerald-100" : "bg-red-50 text-red-800 border border-red-100"}`}>
@@ -583,13 +784,30 @@ const [ayantTelephone, setAyantTelephone] = useState("");
                                   </span>
                                 )}
                               </td>
+
+                              {/* Pièces jointes */}
                               <td className="px-4 py-3 text-center">
                                 {pieces.length > 0
                                   ? <button onClick={() => setSelectedPieces(pieces)} className="inline-flex items-center gap-1.5 text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-1.5 rounded-full hover:bg-emerald-100 transition">
-                                      <Eye size={12} /> {pieces.length} fichier{pieces.length > 1 ? "s" : ""}
+                                      <Eye size={12} /> {pieces.length}
                                     </button>
                                   : <span className="text-xs text-slate-300">—</span>}
                               </td>
+
+                              {/* ── COLONNE PEC ── */}
+                              <td className="px-4 py-3 text-center">
+                                {hasPEC ? (
+                                  <button
+                                    onClick={() => setSelectedPEC(d)}
+                                    className="inline-flex items-center gap-1.5 text-[11px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 px-3 py-1.5 rounded-full hover:bg-indigo-100 transition"
+                                  >
+                                    <Download size={12} /> PEC
+                                  </button>
+                                ) : (
+                                  <span className="text-xs text-slate-300">—</span>
+                                )}
+                              </td>
+
                               <td className="px-4 py-3 text-center"><StatusBadge status={d.statut} /></td>
                               <td className="px-4 py-3 max-w-[160px]">
                                 {isRejetee && (d.motif_refus || d.motifRefus)
@@ -613,7 +831,9 @@ const [ayantTelephone, setAyantTelephone] = useState("");
 
       </div>
 
+      {/* ── MODALS ── */}
       {selectedPieces && <PiecesModal pieces={selectedPieces} onClose={() => setSelectedPieces(null)} />}
+      {selectedPEC    && <PECModal    demande={selectedPEC}   onClose={() => setSelectedPEC(null)} />}
     </div>
   );
 }

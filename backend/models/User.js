@@ -108,6 +108,11 @@ publicKey: {
   type: DataTypes.TEXT,
   allowNull: true,
 },
+// ✅ Ajoutez juste en dessous :
+privateKey: {
+  type: DataTypes.TEXT,
+  allowNull: true,
+},
 }, {
   timestamps: true, // utilise createdAt et updatedAt
 });

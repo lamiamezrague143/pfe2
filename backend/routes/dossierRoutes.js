@@ -66,7 +66,7 @@ router.post('/ajouter', authMiddleware(["secretariat", "president"]), async (req
 });
 
 // ✅ LISTE GÉNÉRALE (secrétariat + président)
-router.get('/liste-generale', authMiddleware(["secretariat", "president","comptable"]), async (req, res) => {
+router.get('/liste-generale', authMiddleware(["secretariat", "president","comptable","agent"]), async (req, res) => {
   try {
     const { debut, fin } = req.query;
 

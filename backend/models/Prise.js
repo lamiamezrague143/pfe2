@@ -70,7 +70,15 @@ annule: {
 agentNom: {
   type: DataTypes.STRING,
   allowNull: false
-}
+},
+fichier_prise_en_charge: {
+  type: DataTypes.STRING,
+  allowNull: true,
+},
+message_admin: {
+  type: DataTypes.TEXT,
+  allowNull: true,
+},
 
 }, {
   tableName: "prises_en_charge",

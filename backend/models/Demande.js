@@ -34,8 +34,18 @@ pieces: {
 pour_qui:   { type: DataTypes.ENUM('moi', 'autre'), defaultValue: 'moi' },
 lien_parente: { type: DataTypes.STRING, allowNull: true },
   motif_refus: { type: DataTypes.TEXT, allowNull: true },
-  message_admin: { type: DataTypes.TEXT, allowNull: true } // Pour les dossiers validés
-}, {
+  message_admin: { type: DataTypes.TEXT, allowNull: true } ,// Pour les dossiers validés
+  fichier_prise_en_charge: {
+  type: DataTypes.STRING,
+  allowNull: true
+},
+ayant_prenom:     { type: DataTypes.STRING, allowNull: true },
+ayant_nom:        { type: DataTypes.STRING, allowNull: true },
+ayant_lien:       { type: DataTypes.STRING, allowNull: true },
+ayant_date_naiss: { type: DataTypes.DATEONLY, allowNull: true },
+ayant_telephone:  { type: DataTypes.STRING, allowNull: true },
+}, 
+{
   tableName: 'demandes',
   timestamps: true
 });

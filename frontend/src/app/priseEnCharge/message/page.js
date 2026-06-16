@@ -1,11 +1,10 @@
 "use client";
 import React, { useState, useEffect, useRef } from "react";
 import { io } from "socket.io-client";
-import { Send, MessageSquare, User, Users, Search, Circle, Trash2 } from "lucide-react";
+import { Send, MessageSquare, User, Users, Search, Trash2, Lock } from "lucide-react";
 import { apiFetch } from "../../../lib/api";
 
 const SOCKET_SERVER_URL = "http://localhost:5001";
-const ADMIN_ID = 999;
 
 const formatTime = (ts) =>
   ts ? new Date(ts).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "";
@@ -18,64 +17,283 @@ const formatDate = (ts) => {
   return d.toLocaleDateString("fr-FR", { day: "2-digit", month: "short" });
 };
 
-// Remplace toute la fonction getUserName par :
-const getUserName = (msg, uid) => {
-  const u = Number(msg.senderId) !== ADMIN_ID ? msg.sender : msg.receiver;
-  if (u?.prenomComplet && u?.nomComplet)
-    return `${u.prenomComplet} ${u.nomComplet}`;
+// ✅ myId passé en paramètre (plus de référence à un state externe)
+const getUserName = (msg, uid, myId) => {
+  const u = Number(msg.senderId) !== myId ? msg.sender : msg.receiver;
+  if (u?.prenomComplet && u?.nomComplet) return `${u.prenomComplet} ${u.nomComplet}`;
   if (u?.nomComplet) return u.nomComplet;
   return `Utilisateur #${uid}`;
 };
 
+// ─────────────────────────────────────────────
+// UTILITAIRES CHIFFREMENT (Web Crypto API)
+// ─────────────────────────────────────────────
+
+const bufToBase64 = (buf) =>
+  btoa(String.fromCharCode(...new Uint8Array(buf)));
+
+const base64ToBuf = (b64) =>
+  Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)).buffer;
+
+const generateRSAKeyPair = () =>
+  window.crypto.subtle.generateKey(
+    { name: "RSA-OAEP", modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" },
+    true,
+    ["encrypt", "decrypt"]
+  );
+
+const exportPublicKey = async (publicKey) => {
+  const exported = await window.crypto.subtle.exportKey("spki", publicKey);
+  return bufToBase64(exported);
+};
+
+const exportPrivateKey = async (privateKey) => {
+  const exported = await window.crypto.subtle.exportKey("pkcs8", privateKey);
+  return bufToBase64(exported);
+};
+
+const importPublicKey = async (b64) => {
+  const clean = b64
+    .replace("-----BEGIN PUBLIC KEY-----", "")
+    .replace("-----END PUBLIC KEY-----", "")
+    .replace(/\s+/g, "");
+  const buf = base64ToBuf(clean);
+  return window.crypto.subtle.importKey(
+    "spki", buf,
+    { name: "RSA-OAEP", hash: "SHA-256" },
+    false, ["encrypt"]
+  );
+};
+
+const importPrivateKey = async (b64) => {
+  const clean = b64
+    .replace("-----BEGIN PRIVATE KEY-----", "")
+    .replace("-----END PRIVATE KEY-----", "")
+    .replace(/\s+/g, "");
+  const buf = base64ToBuf(clean);
+  return window.crypto.subtle.importKey(
+    "pkcs8", buf,
+    { name: "RSA-OAEP", hash: "SHA-256" },
+    true, ["decrypt"]
+  );
+};
+
+const encryptMessage = async (plaintext, recipientPublicKey) => {
+  const aesKey = await window.crypto.subtle.generateKey(
+    { name: "AES-GCM", length: 256 }, true, ["encrypt", "decrypt"]
+  );
+  const iv = window.crypto.getRandomValues(new Uint8Array(12));
+  const encoded = new TextEncoder().encode(plaintext);
+  const encryptedContent = await window.crypto.subtle.encrypt(
+    { name: "AES-GCM", iv }, aesKey, encoded
+  );
+  const rawAES = await window.crypto.subtle.exportKey("raw", aesKey);
+  const encryptedAESKey = await window.crypto.subtle.encrypt(
+    { name: "RSA-OAEP" }, recipientPublicKey, rawAES
+  );
+  return JSON.stringify({
+    encryptedAESKey: bufToBase64(encryptedAESKey),
+    iv: bufToBase64(iv),
+    encryptedContent: bufToBase64(encryptedContent),
+  });
+};
+
+const decryptMessage = async (ciphertextJSON, privateKey) => {
+  if (!ciphertextJSON) return "";
+
+  let parsed;
+  try {
+    parsed = JSON.parse(ciphertextJSON);
+  } catch {
+    return ciphertextJSON;
+  }
+
+  if (!parsed.encryptedAESKey || !parsed.iv || !parsed.encryptedContent) {
+    return ciphertextJSON;
+  }
+
+  try {
+    const { encryptedAESKey, iv, encryptedContent } = parsed;
+    const rawAES = await window.crypto.subtle.decrypt(
+      { name: "RSA-OAEP" }, privateKey, base64ToBuf(encryptedAESKey)
+    );
+    const aesKey = await window.crypto.subtle.importKey(
+      "raw", rawAES, { name: "AES-GCM" }, false, ["decrypt"]
+    );
+    const decrypted = await window.crypto.subtle.decrypt(
+      { name: "AES-GCM", iv: base64ToBuf(iv) }, aesKey, base64ToBuf(encryptedContent)
+    );
+    return new TextDecoder().decode(decrypted);
+  } catch {
+    return "🔒 Message chiffré (clé expirée)";
+  }
+};
+
+// ─────────────────────────────────────────────
+// PERSISTENCE DES CLÉS (localStorage)
+// ─────────────────────────────────────────────
+
+const getOrGenerateKeyPair = async () => {
+  const storedPriv = localStorage.getItem("admin_rsa_private_key");
+  const storedPub  = localStorage.getItem("admin_rsa_public_key");
+
+  if (storedPriv && storedPub) {
+    const privateKey = await importPrivateKey(storedPriv);
+    const publicKey  = await importPublicKey(storedPub);
+    return { privateKey, publicKey, publicKeyB64: storedPub };
+  }
+
+  const keyPair       = await generateRSAKeyPair();
+  const publicKeyB64  = await exportPublicKey(keyPair.publicKey);
+  const privateKeyB64 = await exportPrivateKey(keyPair.privateKey);
+
+  localStorage.setItem("admin_rsa_public_key",  publicKeyB64);
+  localStorage.setItem("admin_rsa_private_key", privateKeyB64);
+
+  return { privateKey: keyPair.privateKey, publicKey: keyPair.publicKey, publicKeyB64 };
+};
+
+// ─────────────────────────────────────────────
+// COMPOSANT PRINCIPAL
+// ─────────────────────────────────────────────
+
 export default function AdminMessagesPage() {
   const [conversations, setConversations] = useState([]);
-  const [selectedUser, setSelectedUser] = useState(null);
-  const [messages, setMessages] = useState([]);
-  const [input, setInput] = useState("");
-  const [search, setSearch] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [deletingId, setDeletingId] = useState(null);
+  const [selectedUser, setSelectedUser]   = useState(null);
+  const [messages, setMessages]           = useState([]);
+  const [input, setInput]                 = useState("");
+  const [search, setSearch]               = useState("");
+  const [loading, setLoading]             = useState(true);
+  const [deletingId, setDeletingId]       = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [e2eeReady, setE2eeReady]         = useState(false);
+  const [currentUserId, setCurrentUserId] = useState(null); // pour le JSX
 
-  const socketRef = useRef(null);
-  const scrollRef = useRef(null);
-  const selectedUserRef = useRef(null);
+  const socketRef         = useRef(null);
+  const scrollRef         = useRef(null);
+  const selectedUserRef   = useRef(null);
+  const privateKeyRef     = useRef(null);
+  const publicKeyRef      = useRef(null);
+  const recipientKeysRef  = useRef({});
+  const currentUserIdRef  = useRef(null); // ✅ pour les callbacks async
+
+  // ── 1. Clés RSA + lecture ID depuis token ──
+  useEffect(() => {
+    (async () => {
+      const { privateKey, publicKey, publicKeyB64 } = await getOrGenerateKeyPair();
+
+      privateKeyRef.current = privateKey;
+      publicKeyRef.current  = publicKey;
+
+      // ✅ Lire l'ID depuis le token JWT
+      try {
+        const token = localStorage.getItem("token");
+        if (token) {
+          const payload = JSON.parse(atob(token.split(".")[1]));
+          setCurrentUserId(payload.id);
+          currentUserIdRef.current = payload.id; // ✅ disponible immédiatement dans les callbacks
+        }
+      } catch (e) {
+        console.warn("Token invalide", e);
+      }
+
+      // Enregistrer la clé publique sur le serveur
+      try {
+        await apiFetch("/users/public-key", {
+          method: "POST",
+          body: JSON.stringify({ publicKey: publicKeyB64 }),
+        });
+      } catch (e) {
+        console.warn("[E2EE] Impossible d'enregistrer la clé publique :", e);
+      }
+
+      setE2eeReady(true);
+    })();
+  }, []);
 
   useEffect(() => { selectedUserRef.current = selectedUser; }, [selectedUser]);
 
+  // ── 2. Socket ──
   useEffect(() => {
+    if (!e2eeReady) return;
+
     const socket = io(SOCKET_SERVER_URL, { withCredentials: true });
     socketRef.current = socket;
 
-    const onMessageReceived = (msg) => {
+    const onMessageReceived = async (msg) => {
+      const myId = currentUserIdRef.current; // ✅ toujours à jour
+
+      if (Number(msg.senderId) === myId) {
+        // Message envoyé par moi-même (echo du serveur) → remplacer le temp
+        const uid = Number(msg.receiverId);
+
+        setMessages((prev) => {
+          const hasTempId = prev.some((m) => typeof m.id === "string" && m.id.startsWith("temp-"));
+          if (hasTempId) {
+            const lastTempIdx = [...prev].reverse().findIndex(
+              (m) => typeof m.id === "string" && m.id.startsWith("temp-")
+            );
+            const realIdx = prev.length - 1 - lastTempIdx;
+            const updated = [...prev];
+            updated[realIdx] = { ...msg, content: prev[realIdx].content };
+            return updated;
+          }
+          if (prev.some((m) => m.id === msg.id)) return prev;
+          return [...prev, msg];
+        });
+
+        setConversations((prev) =>
+          prev.map((c) => c.userId === uid ? { ...c, lastTime: msg.createdAt } : c)
+        );
+        return;
+      }
+
+      // Message reçu d'un bénéficiaire
       const isRelevant =
         Number(msg.senderId) === Number(selectedUserRef.current?.userId) ||
         Number(msg.receiverId) === Number(selectedUserRef.current?.userId);
 
+      let decryptedContent = msg.content;
+      if (privateKeyRef.current) {
+        decryptedContent = await decryptMessage(msg.content, privateKeyRef.current);
+      }
+      const decryptedMsg = { ...msg, content: decryptedContent };
+
       if (isRelevant) {
         setMessages((prev) => {
-          const exists = prev.find((m) => m.id === msg.id);
-          if (exists && msg.id) return prev;
-          return [...prev, msg];
+          if (prev.some((m) => m.id === msg.id)) return prev;
+          return [...prev, decryptedMsg];
         });
       }
 
-      const uid = Number(msg.senderId) === ADMIN_ID ? Number(msg.receiverId) : Number(msg.senderId);
+      const uid = Number(msg.senderId) === myId
+        ? Number(msg.receiverId)
+        : Number(msg.senderId);
+
       setConversations((prev) =>
-        prev.map((c) => c.userId === uid ? { ...c, lastMessage: msg.content, lastTime: msg.createdAt } : c)
+        prev.map((c) =>
+          c.userId === uid
+            ? { ...c, lastMessage: decryptedContent, lastTime: msg.createdAt }
+            : c
+        )
       );
     };
 
     socket.on("receive_message", onMessageReceived);
     fetchConversations();
 
-    return () => { socket.off("receive_message", onMessageReceived); socket.disconnect(); };
-  }, []);
+    return () => {
+      socket.off("receive_message", onMessageReceived);
+      socket.disconnect();
+    };
+  }, [e2eeReady]);
 
   useEffect(() => { scrollRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
+  // ── fetchConversations ──
   const fetchConversations = async () => {
     try {
+      const myId = currentUserIdRef.current; // ✅ ref, pas state
       const data = await apiFetch("/messages");
       if (!data) return;
 
@@ -84,49 +302,132 @@ export default function AdminMessagesPage() {
         : Array.isArray(data?.data) ? data.data : [];
 
       const map = {};
-      list.forEach((msg) => {
-        const uid = Number(msg.senderId) === ADMIN_ID ? Number(msg.receiverId) : Number(msg.senderId);
-        if (!map[uid] || new Date(msg.createdAt) > new Date(map[uid].lastTime)) {
-          map[uid] = { userId: uid, name: getUserName(msg, uid), lastMessage: msg.content, lastTime: msg.createdAt, unread: 0 };
+      for (const msg of list) {
+        const uid = Number(msg.senderId) === myId
+          ? Number(msg.receiverId)
+          : Number(msg.senderId);
+
+        const raw = Number(msg.senderId) === myId && msg.contentForSender
+          ? msg.contentForSender
+          : msg.content;
+
+        let previewContent = raw;
+        if (privateKeyRef.current) {
+          previewContent = await decryptMessage(raw, privateKeyRef.current);
         }
-      });
+
+        if (!map[uid] || new Date(msg.createdAt) > new Date(map[uid].lastTime)) {
+          map[uid] = {
+            userId: uid,
+            name: getUserName(msg, uid, myId), // ✅ myId passé en paramètre
+            lastMessage: previewContent,
+            lastTime: msg.createdAt,
+            unread: 0,
+          };
+        }
+      }
 
       setConversations(Object.values(map).sort((a, b) => new Date(b.lastTime) - new Date(a.lastTime)));
     } catch (e) { console.error("Erreur conversations:", e); }
     finally { setLoading(false); }
   };
 
+  // ── selectUser ──
   const selectUser = async (conv) => {
     setSelectedUser(conv);
     setConfirmDelete(null);
     setConversations((prev) => prev.map((c) => c.userId === conv.userId ? { ...c, unread: 0 } : c));
 
     try {
+      const myId = currentUserIdRef.current; // ✅ ref
       const data = await apiFetch(`/messages?userId=${conv.userId}`);
       const list = Array.isArray(data) ? data
         : Array.isArray(data?.messages) ? data.messages
         : Array.isArray(data?.data) ? data.data : [];
 
-      setMessages(list.filter((m) => Number(m.senderId) === conv.userId || Number(m.receiverId) === conv.userId));
+      const filtered = list.filter((m) =>
+        Number(m.senderId) === conv.userId || Number(m.receiverId) === conv.userId
+      );
+
+      const decryptedList = await Promise.all(
+        filtered.map(async (m) => {
+          const raw = Number(m.senderId) === myId && m.contentForSender
+            ? m.contentForSender
+            : m.content;
+          return {
+            ...m,
+            content: privateKeyRef.current
+              ? await decryptMessage(raw, privateKeyRef.current)
+              : raw,
+          };
+        })
+      );
+      setMessages(decryptedList);
     } catch (e) { setMessages([]); }
   };
 
-  const sendReply = () => {
-    if (!input.trim() || !selectedUser || !socketRef.current) return;
+  // ── sendReply ──
+  const sendReply = async () => {
+    if (!input.trim() || !selectedUser) return;
 
-    const newMsg = {
-      senderId: ADMIN_ID, receiverId: selectedUser.userId,
-      content: input.trim(), createdAt: new Date().toISOString(),
-    };
+    const plaintext = input.trim();
+    const myId = currentUserIdRef.current; // ✅ ref
 
-    socketRef.current.emit("send_message", newMsg);
-    setMessages((prev) => [...prev, newMsg]);
-    setConversations((prev) =>
-      prev.map((c) => c.userId === selectedUser.userId ? { ...c, lastMessage: newMsg.content, lastTime: newMsg.createdAt } : c)
-    );
+    // Récupérer la clé publique du bénéficiaire
+    let recipientKey = recipientKeysRef.current[selectedUser.userId];
+    if (!recipientKey) {
+      try {
+        const keyData = await apiFetch(`/users/public-key/${selectedUser.userId}`);
+        if (keyData?.publicKey) {
+          recipientKey = await importPublicKey(keyData.publicKey);
+          recipientKeysRef.current[selectedUser.userId] = recipientKey;
+        }
+      } catch (e) {
+        console.warn("[E2EE] Clé publique du destinataire introuvable.", e);
+      }
+    }
+
+    const encryptedForRecipient = recipientKey
+      ? await encryptMessage(plaintext, recipientKey)
+      : plaintext;
+
+    const encryptedForSelf = publicKeyRef.current
+      ? await encryptMessage(plaintext, publicKeyRef.current)
+      : plaintext;
+
+    // ✅ Afficher en clair localement
+    const tempId = `temp-${Date.now()}`;
+    setMessages((prev) => [...prev, {
+      id: tempId,
+      senderId: myId,
+      receiverId: selectedUser.userId,
+      content: plaintext,
+      createdAt: new Date().toISOString(),
+    }]);
     setInput("");
+
+    // ✅ Envoyer via HTTP pour sauvegarder contentForSender en BDD
+    try {
+      const token = localStorage.getItem("token");
+      await fetch("http://localhost:5001/api/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          receiverId: selectedUser.userId,
+          content: encryptedForRecipient,
+          contentForSender: encryptedForSelf,
+        }),
+      });
+    } catch (err) {
+      console.error("Erreur envoi:", err);
+      setMessages((prev) => prev.filter((m) => m.id !== tempId));
+    }
   };
 
+  // ── deleteMessage ──
   const deleteMessage = async (msgId) => {
     setDeletingId(msgId);
     try {
@@ -152,11 +453,21 @@ export default function AdminMessagesPage() {
         </div>
         <div>
           <h1 className="font-black text-base tracking-tight">Messagerie Administration</h1>
-          <p className="text-[11px] text-emerald-200 font-medium"> UMMTO — Espace de réponse aux demandes</p>
+          <p className="text-[11px] text-emerald-200 font-medium">UMMTO — Espace de réponse aux demandes</p>
         </div>
-        <div className="ml-auto flex items-center gap-2 text-[11px] bg-white/15 border border-white/20 px-3 py-1.5 rounded-full font-bold backdrop-blur-sm">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse" />
-          Admin connecté
+        <div className="ml-auto flex items-center gap-3">
+          <div className={`flex items-center gap-1.5 text-[10px] px-3 py-1.5 rounded-full font-bold border backdrop-blur-sm transition-all ${
+            e2eeReady
+              ? "bg-emerald-500/20 border-emerald-300/30 text-emerald-100"
+              : "bg-white/10 border-white/20 text-white/50"
+          }`}>
+            <Lock size={10} />
+            {e2eeReady ? "Chiffrement actif" : "Initialisation…"}
+          </div>
+          <div className="flex items-center gap-2 text-[11px] bg-white/15 border border-white/20 px-3 py-1.5 rounded-full font-bold backdrop-blur-sm">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse" />
+            Admin connecté
+          </div>
         </div>
       </header>
 
@@ -164,8 +475,6 @@ export default function AdminMessagesPage() {
 
         {/* ── SIDEBAR ── */}
         <aside className="w-80 bg-white border-r border-slate-100 flex flex-col shrink-0 shadow-sm">
-
-          {/* Search */}
           <div className="p-3 border-b border-slate-100">
             <div className="relative">
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -179,7 +488,6 @@ export default function AdminMessagesPage() {
             </div>
           </div>
 
-          {/* Count */}
           <div className="flex items-center gap-2 px-4 py-2.5 border-b border-slate-100">
             <Users size={13} className="text-slate-400" />
             <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">
@@ -187,7 +495,6 @@ export default function AdminMessagesPage() {
             </span>
           </div>
 
-          {/* List */}
           <div className="flex-1 overflow-y-auto">
             {loading ? (
               <div className="flex justify-center items-center py-10">
@@ -252,9 +559,15 @@ export default function AdminMessagesPage() {
                   <p className="text-sm font-black text-slate-800 uppercase tracking-tight">{selectedUser.name}</p>
                   <p className="text-[10px] text-slate-400 font-medium">ID : {selectedUser.userId}</p>
                 </div>
-                <div className="ml-auto flex items-center gap-1.5 text-[10px] text-emerald-600 font-bold bg-emerald-50 border border-emerald-100 px-3 py-1.5 rounded-full">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  En ligne
+                <div className="ml-auto flex items-center gap-2">
+                  <div className="flex items-center gap-1 text-[10px] text-emerald-700 font-bold bg-emerald-50 border border-emerald-100 px-2.5 py-1 rounded-full">
+                    <Lock size={9} />
+                    E2EE
+                  </div>
+                  <div className="flex items-center gap-1.5 text-[10px] text-emerald-600 font-bold bg-emerald-50 border border-emerald-100 px-3 py-1.5 rounded-full">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    En ligne
+                  </div>
                 </div>
               </div>
 
@@ -266,7 +579,8 @@ export default function AdminMessagesPage() {
                   </div>
                 ) : (
                   messages.map((msg, i) => {
-                    const isAdmin = Number(msg.senderId) === Number(ADMIN_ID);
+                    // ✅ currentUserId (state) utilisé ici pour le rendu JSX
+                    const isAdmin = Number(msg.senderId) === Number(currentUserId);
                     const isConfirming = confirmDelete === msg.id;
                     const isDeleting = deletingId === msg.id;
 
@@ -295,12 +609,12 @@ export default function AdminMessagesPage() {
                                 className="mt-2 rounded-xl max-w-full h-auto border border-slate-100"
                                 onError={(e) => (e.target.style.display = "none")} />
                             )}
-                            <span className={`text-[9px] mt-1 block font-medium ${isAdmin ? "text-emerald-200 text-right" : "text-slate-400"}`}>
+                            <span className={`text-[9px] mt-1 flex items-center gap-1 font-medium ${isAdmin ? "text-emerald-200 justify-end" : "text-slate-400"}`}>
+                              <Lock size={7} />
                               {isAdmin ? "Vous (Admin)" : selectedUser.name} · {formatTime(msg.createdAt || msg.timestamp)}
                             </span>
                           </div>
 
-                          {/* Supprimer */}
                           {msg.id && (
                             <div className={`mt-1 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity ${isAdmin ? "justify-end" : "justify-start"}`}>
                               {isConfirming ? (
@@ -353,8 +667,9 @@ export default function AdminMessagesPage() {
                 />
                 <button
                   onClick={sendReply}
-                  disabled={!input.trim()}
+                  disabled={!input.trim() || !e2eeReady}
                   className="w-10 h-10 bg-gradient-to-br from-emerald-600 to-teal-600 text-white rounded-xl flex items-center justify-center hover:from-emerald-700 hover:to-teal-700 transition-all shadow-md shadow-emerald-200 disabled:opacity-40 disabled:cursor-not-allowed shrink-0 active:scale-95"
+                  title={!e2eeReady ? "Initialisation du chiffrement..." : "Envoyer"}
                 >
                   <Send size={15} />
                 </button>

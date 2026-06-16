@@ -44,7 +44,13 @@ router.post('/ajouter', authMiddleware(["beneficiaire","agent","president"]),upl
       lieu_naissance,
       etablissement,
       pieces: piecesData,
-      statut: "En attente"
+      statut: "En attente",
+      pour_qui: pour_qui || "moi",                    // ← ajouter
+  ayant_prenom:     ayant_prenom || null,         // ← ajouter
+  ayant_nom:        ayant_nom || null,
+  ayant_lien:       ayant_lien || null,
+  ayant_date_naiss: ayant_date_naiss || null,
+  ayant_telephone:  ayant_telephone || null,
     });
 
     res.status(201).json(nouvelleDemande);
@@ -66,6 +72,8 @@ router.post('/valider/:id', authMiddleware(["agent","president"]), async (req, r
 
   try {
     const demande = await Demande.findByPk(req.params.id, { transaction: t });
+    console.log("✅ DEMANDE TROUVÉE:", demande?.toJSON()); // ← ajoute ça
+    console.log("✅ USER:", req.user); // ← et ça
 
     if (!demande) {
       await t.rollback();
@@ -73,9 +81,23 @@ router.post('/valider/:id', authMiddleware(["agent","president"]), async (req, r
     }
 
     // Numéro dossier
-    const count = await Dossier.count({ transaction: t });
-    const num_sequence = `${new Date().getFullYear()}-${(count + 1).toString().padStart(3, '0')}`;
+  // ✅ REMPLACE PAR CECI
+const { Op } = require('sequelize');
+const year = new Date().getFullYear();
 
+const lastDossier = await Dossier.findOne({
+  where: { num_sequence: { [Op.like]: `${year}-%` } },
+  order: [['createdAt', 'DESC']],
+  transaction: t
+});
+
+let nextNum = 1;
+if (lastDossier) {
+  const lastNum = parseInt(lastDossier.num_sequence.split('-')[1], 10);
+  if (!isNaN(lastNum)) nextNum = lastNum + 1;
+}
+
+const num_sequence = `${year}-${nextNum.toString().padStart(3, '0')}`;
     // Création dossier
     const dossier = await Dossier.create({
       num_sequence,
@@ -134,53 +156,35 @@ router.post('/valider/:id', authMiddleware(["agent","president"]), async (req, r
 // ─────────────────────────────
 // 3. LISTE DEMANDES (AGENT)
 // ─────────────────────────────
-router.get('/', authMiddleware(["agent", "beneficiaire","president"]), async (req, res) => {
+// ─────────────────────────────
+// 3. LISTE DEMANDES
+// ─────────────────────────────
+router.get('/', authMiddleware(["agent", "beneficiaire", "president"]), async (req, res) => {
   try {
-    const limit = parseInt(req.query.limit) || 20;
-    const offset = parseInt(req.query.offset) || 0;
+    const isAgent = req.user.role === "agent" || req.user.role === "president";
 
-// APRÈS — tous les champs inclus
-const demandes = await Demande.findAll({
-  order: [['createdAt', 'DESC']],
-  limit,
-  offset
-});
+    const demandes = await Demande.findAll({
+      where: isAgent ? {} : { userId: req.user.id },
+      order: [['createdAt', 'DESC']]
+      // ← pas d'attributes, renvoie tout
+    });
 
     res.json(demandes);
 
   } catch (err) {
-    res.status(500).json({
-      message: "Erreur récupération",
-      error: err.message
-    });
+    console.error("🔥 ERREUR GET DEMANDES:", err.message); // ← regarde ici
+    res.status(500).json({ message: "Erreur récupération", error: err.message });
   }
 });
 
 // ─────────────────────────────
 // 4. RÉCUPÉRER UNE DEMANDE AVEC PIÈCES (AGENT)
 // ─────────────────────────────
-router.get('/:id', authMiddleware(["agent","president"]), async (req, res) => {
-  try {
-    const demande = await Demande.findByPk(req.params.id);
-
-    if (!demande) {
-      return res.status(404).json({ message: "Introuvable" });
-    }
-
-    res.json(demande);
-
-  } catch (err) {
-    res.status(500).json({
-      message: "Erreur serveur",
-      error: err.message
-    });
-  }
-});
 
 // ─────────────────────────────
 // 5. REJETER DEMANDE (AGENT)
 // ─────────────────────────────
-router.post('/rejeter/:id', authMiddleware(["agent",,"president"]), async (req, res) => {
+router.post('/rejeter/:id', authMiddleware(["agent","president"]), async (req, res) => {
   try {
    const { motif_refus, motif } = req.body;
 const motifFinal = motif_refus || motif;
@@ -255,5 +259,59 @@ router.post('/submit-dossier', authMiddleware(["agent","president"]), async (req
     res.status(500).json({ success: false, message: "Erreur interne du serveur." });
   }
 });
+router.get('/:id', authMiddleware(["agent","president"]), async (req, res) => {
+  try {
+    const demande = await Demande.findByPk(req.params.id);
 
+    if (!demande) {
+      return res.status(404).json({ message: "Introuvable" });
+    }
+
+    res.json(demande);
+
+  } catch (err) {
+    res.status(500).json({
+      message: "Erreur serveur",
+      error: err.message
+    });
+  }
+});
+
+// ─────────────────────────────
+// 7. UPLOAD PRISE EN CHARGE (AGENT → vers bénéficiaire)
+// ─────────────────────────────
+router.post('/upload-pec/:id', authMiddleware(["agent", "president"]), upload.single('pec'), async (req, res) => {
+  try {
+    const demande = await Demande.findByPk(req.params.id);
+
+    if (!demande) {
+      return res.status(404).json({ message: "Demande introuvable" });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ message: "Aucun fichier reçu" });
+    }
+
+    // Cloudinary renvoie le lien public dans req.file.path
+    demande.fichier_prise_en_charge = req.file.path;
+
+    if (req.body.note && req.body.note.trim()) {
+      demande.message_admin = req.body.note.trim();
+    }
+
+    await demande.save();
+
+    return res.json({
+      message: "✅ Prise en charge uploadée avec succès",
+      fichier: req.file.path
+    });
+
+  } catch (err) {
+    console.error("🔥 ERREUR UPLOAD PEC MESSAGE:", err.message);
+    console.error("🔥 STACK:", err.stack);
+    console.error("🔥 FILE RECU:", req.file);
+    console.error("🔥 BODY RECU:", req.body);
+    return res.status(500).json({ message: "Erreur serveur", error: err.message });
+  }
+});
 module.exports = router;

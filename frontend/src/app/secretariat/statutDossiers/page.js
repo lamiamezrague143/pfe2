@@ -759,7 +759,7 @@ const handleCreer = async (payload) => {
             <h2 className="text-4xl md:text-5xl font-black text-slate-900 mb-4 tracking-tight">
               Suivi des{" "}
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-600 to-teal-600">
-                Prêts
+                Dossiers
               </span>
             </h2>
             <p className="text-slate-500 text-base max-w-2xl leading-relaxed">

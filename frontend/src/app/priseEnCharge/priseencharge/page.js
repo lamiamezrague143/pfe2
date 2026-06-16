@@ -94,6 +94,8 @@ function UploadPriseEnChargeModal({ demande, onClose, onSuccess }) {
   const [preview, setPreview] = useState(null);
   const [drag, setDrag] = useState(false);
   const [note, setNote] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [uploaded, setUploaded] = useState(false);
   const fileInputRef = useRef(null);
 
   if (!demande) return null;
@@ -114,14 +116,42 @@ function UploadPriseEnChargeModal({ demande, onClose, onSuccess }) {
   };
 
   const handleDrop = (e) => {
-    e.preventDefault(); setDrag(false);
+    e.preventDefault();
+    setDrag(false);
     handleFile(e.dataTransfer.files[0]);
   };
 
+  const handleUpload = async () => {
+    if (!file) return;
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("pec", file);
+      if (note.trim()) formData.append("note", note);
+
+      const token = localStorage.getItem("token");
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5001/api"}/demandes/upload-pec/${demande.id}`,
+        {
+          method: "POST",
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          body: formData,
+        }
+      );
+      if (!res.ok) throw new Error("Échec upload");
+      setUploaded(true);
+      setTimeout(() => { onSuccess?.(); onClose(); }, 1200);
+    } catch (err) {
+      alert("❌ Erreur lors de l'envoi du fichier");
+    } finally {
+      setUploading(false);
+    }
+  };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-sm">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden animate-fadeIn">
+        {/* Header */}
         <div className="bg-gradient-to-r from-indigo-700 to-blue-600 p-5 flex justify-between items-center">
           <div>
             <p className="text-white/70 text-xs uppercase tracking-widest">Upload Prise en Charge</p>
@@ -131,12 +161,97 @@ function UploadPriseEnChargeModal({ demande, onClose, onSuccess }) {
           <button onClick={onClose} className="w-8 h-8 rounded-full bg-white/20 hover:bg-white/40 flex items-center justify-center text-white font-bold transition">✕</button>
         </div>
 
+        <div className="p-6 space-y-4">
+          {/* Info récap */}
+          <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-3 text-xs text-indigo-700 space-y-1">
+            <p><span className="font-bold">Dossier :</span> #{demande.id}</p>
+            <p><span className="font-bold">Bénéficiaire :</span> {demande.nom_beneficiaire}</p>
+            <p><span className="font-bold">Prestation :</span> {demande.type_prestation}</p>
+            <p className="text-[10px] text-indigo-400 mt-1">
+              📎 Le fichier uploadé sera envoyé au bénéficiaire et stocké dans son dossier.
+            </p>
+          </div>
 
+          {/* Zone drag & drop */}
+          {!file ? (
+            <div
+              onDragOver={e => { e.preventDefault(); setDrag(true); }}
+              onDragLeave={() => setDrag(false)}
+              onDrop={handleDrop}
+              onClick={() => fileInputRef.current?.click()}
+              className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all ${
+                drag ? "border-indigo-500 bg-indigo-50" : "border-gray-300 hover:border-indigo-400 hover:bg-gray-50"
+              }`}
+            >
+              <p className="text-4xl mb-2">📤</p>
+              <p className="font-bold text-gray-700 text-sm">Glisser-déposer ou cliquer</p>
+              <p className="text-xs text-gray-400 mt-1">PDF, JPG, PNG, WEBP — max 10 Mo</p>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf,image/*"
+                className="hidden"
+                onChange={e => handleFile(e.target.files[0])}
+              />
+            </div>
+          ) : (
+            <div className="border border-gray-200 rounded-xl overflow-hidden">
+              {preview === "pdf" ? (
+                <div className="bg-red-50 p-4 flex items-center gap-3">
+                  <span className="text-3xl">📄</span>
+                  <div>
+                    <p className="font-bold text-sm text-gray-800">{file.name}</p>
+                    <p className="text-xs text-gray-400">{(file.size / 1024).toFixed(0)} Ko — PDF</p>
+                  </div>
+                </div>
+              ) : (
+                <img src={preview} alt="preview" className="w-full max-h-52 object-contain bg-gray-50" />
+              )}
+              <div className="p-3 border-t bg-gray-50 flex justify-between items-center">
+                <span className="text-xs text-gray-500 truncate max-w-[200px]">{file.name}</span>
+                <button
+                  onClick={() => { setFile(null); setPreview(null); }}
+                  className="text-xs text-red-500 font-bold hover:underline"
+                >
+                  ✕ Changer
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Note optionnelle */}
+          <div>
+            <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">
+              Note pour le bénéficiaire (optionnel)
+            </label>
+            <textarea
+              value={note}
+              onChange={e => setNote(e.target.value)}
+              placeholder="Ex: Votre prise en charge est prête, veuillez vous présenter à la clinique..."
+              rows={3}
+              className="w-full border border-gray-200 rounded-xl p-3 text-sm resize-none outline-none focus:ring-2 focus:ring-indigo-300 bg-gray-50"
+            />
+          </div>
+
+          {/* Bouton upload */}
+          <button
+            onClick={handleUpload}
+            disabled={!file || uploading || uploaded}
+            className={`w-full py-3 rounded-xl font-black text-white text-sm transition shadow-lg ${
+              uploaded
+                ? "bg-emerald-500 cursor-default"
+                : !file || uploading
+                ? "bg-gray-300 cursor-not-allowed"
+                : "bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200"
+            }`}
+          >
+            {uploaded ? "✅ Envoyé avec succès !" : uploading ? "Envoi en cours..." : "📤 Envoyer la prise en charge"}
+          </button>
+        </div>
       </div>
     </div>
   );
 }
-
 // ─── DOWNLOAD PRISE EN CHARGE ─────────────────────────────────────────────────
 function useDownloadPEC() {
   const downloadPEC = useCallback(async (item, cliniques) => {
@@ -269,11 +384,7 @@ function useDownloadPEC() {
             </div>
           </div>
 
-          <div style="margin-top:16px;padding-top:8px;border-top:1px dashed #aaa;display:flex;justify-content:space-between;font-size:10px;color:#666;">
-            <span><strong>Établi par :</strong> ${item.agentNom || "—"}</span>
-            <span>${new Date(item.createdAt).toLocaleDateString("fr-FR", { day:"2-digit", month:"long", year:"numeric" })}</span>
-          </div>
-
+        
           <script>window.onload = () => { window.print(); };<\/script>
         </body>
         </html>
@@ -304,7 +415,7 @@ function StatusBadge({ status }) {
 }
 
 // ─── MODAL DOSSIER ────────────────────────────────────────────────────────────
-function DossierModal({ demande, onClose, onDecision, cliniques, onUploadSuccess }) {
+function DossierModal({ demande, onClose, onDecision, cliniques, onUploadSuccess, onPrefillForm }) {
   const [motif, setMotif] = useState("");
   const [messageClient, setMessageClient] = useState("");
   const [action, setAction] = useState(null);
@@ -356,93 +467,130 @@ function DossierModal({ demande, onClose, onDecision, cliniques, onUploadSuccess
                 <h2 className="text-base font-semibold">{demande.nom_beneficiaire}</h2>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <button onClick={() => setShowUpload(true)} className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition">📤 Upload PEC</button>
+            <div className="flex items-center gap-2 flex-wrap justify-end">
+              <button onClick={() => setShowUpload(true)} className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition">
+                📤 Upload PEC
+              </button>
               {demande.statut === "Validée" && (
-                <button onClick={() => downloadPEC(demande, cliniques)} className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition">⬇️ Télécharger PEC</button>
+                <button onClick={() => downloadPEC(demande, cliniques)} className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition">
+                  ⬇️ Télécharger PEC
+                </button>
               )}
-              <button onClick={onClose} className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center font-bold text-lg transition">✕</button>
+              <button onClick={() => { onPrefillForm?.(demande); onClose(); }} className="flex items-center gap-1.5 bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition">
+                📋 Remplir formulaire
+              </button>
+              <button onClick={onClose} className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center font-bold text-lg transition">
+                ✕
+              </button>
             </div>
           </div>
 
-          {/* Détails */}
-          <div className="p-6 grid grid-cols-2 gap-4 text-sm border-b">
-            <div>
-              <p className="text-xs text-gray-400 uppercase font-bold mb-1">Bénéficiaire</p>
-              <p className="font-bold text-gray-800">{demande.nom_beneficiaire}</p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-400 uppercase font-bold mb-1">Sexe</p>
-              <span className="bg-purple-50 px-3 py-1 rounded-full text-purple-700 font-medium">{demande.sexe || "—"}</span>
-            </div>
-            <div>
-              <p className="text-xs text-gray-400 uppercase font-bold mb-1">Date de naissance</p>
-              <span className="bg-pink-50 px-3 py-1 rounded-full text-pink-700 font-medium">
-                🎂 {demande.date_naissance ? new Date(demande.date_naissance).toLocaleDateString("fr-FR") : "—"}
-              </span>
-            </div>
-            <div>
-              <p className="text-xs text-gray-400 uppercase font-bold mb-1">Fonction</p>
-              <span className="bg-yellow-50 px-3 py-1 rounded-full text-yellow-700 font-medium">{demande.fonction || "—"}</span>
-            </div>
-            <div>
-              <p className="text-xs text-gray-400 uppercase font-bold mb-1">Type de prestation</p>
-              <span className="bg-gray-100 px-3 py-1 rounded-full text-gray-700 font-medium">{demande.type_prestation}</span>
-            </div>
-            <div>
-              <p className="text-xs text-gray-400 uppercase font-bold mb-1">Lieu</p>
-              <span className="bg-blue-50 px-3 py-1 rounded-full text-blue-700 font-medium">📍 {demande.lieu_naissance || "—"}</span>
-            </div>
-            <div>
-              <p className="text-xs text-gray-400 uppercase font-bold mb-1">Établissement</p>
-              <span className="bg-green-50 px-3 py-1 rounded-full text-green-700 font-medium">🏥 {demande.etablissement || "—"}</span>
-            </div>
-            <div>
-              <p className="text-xs text-gray-400 uppercase font-bold mb-1">Date de dépôt</p>
-              <p className="text-gray-700">{new Date(demande.createdAt).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}</p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-400 uppercase font-bold mb-1">Statut actuel</p>
-              <StatusBadge status={demande.statut} />
+          {/* ── Détails du dossier ── */}
+          <div className="p-6 border-b border-gray-100 space-y-5">
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <p className="text-xs text-gray-400 uppercase font-bold mb-1">Bénéficiaire</p>
+                <p className="font-bold text-gray-800">{demande.nom_beneficiaire || "—"}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-400 uppercase font-bold mb-1">Prestation</p>
+                <p className="font-bold text-gray-800">{demande.type_prestation || "—"}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-400 uppercase font-bold mb-1">Date de la demande</p>
+                <p className="text-gray-700">{demande.createdAt ? new Date(demande.createdAt).toLocaleDateString("fr-FR") : "—"}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-400 uppercase font-bold mb-1">Statut</p>
+                <StatusBadge status={demande.statut} />
+              </div>
+              {demande.fonction && (
+                <div>
+                  <p className="text-xs text-gray-400 uppercase font-bold mb-1">Fonction</p>
+                  <p className="text-gray-700">{demande.fonction}</p>
+                </div>
+              )}
+              {demande.date_naissance && (
+                <div>
+                  <p className="text-xs text-gray-400 uppercase font-bold mb-1">Date / lieu de naissance</p>
+                  <p className="text-gray-700">
+                    {new Date(demande.date_naissance).toLocaleDateString("fr-FR")}
+                    {demande.lieu_naissance ? ` à ${demande.lieu_naissance}` : ""}
+                  </p>
+                </div>
+              )}
+              {demande.telephone && (
+                <div>
+                  <p className="text-xs text-gray-400 uppercase font-bold mb-1">Téléphone</p>
+                  <p className="text-gray-700">{demande.telephone}</p>
+                </div>
+              )}
             </div>
 
-     
-
-            <div className="col-span-2">
-              <p className="text-xs text-gray-400 uppercase font-bold mb-3">Documents joints par le client ({pieces.length})</p>
+            {/* Pièces jointes */}
+            <div>
+              <p className="text-xs text-gray-400 uppercase font-bold mb-2">📎 Pièces jointes ({pieces.length})</p>
               {pieces.length === 0 ? (
-                <div className="bg-gray-50 border border-dashed border-gray-200 rounded-xl p-4 text-center text-gray-400 text-sm">Aucun document joint</div>
+                <p className="text-xs text-gray-300 italic">Aucun document joint.</p>
               ) : (
-                <div className="grid grid-cols-1 gap-3">
+                <div className="grid grid-cols-2 gap-2">
                   {pieces.map((p, i) => {
-                    const isImage = p.type?.includes("image") || p.nom?.match(/\.(jpg|jpeg|png|gif|webp)$/i);
-                    const isPdf   = p.type?.includes("pdf")   || p.nom?.match(/\.pdf$/i);
+                    const raw = typeof p === "string" ? p : (p.url || p.path || p.fichier || p.chemin || "");
+                    const fullUrl = raw.startsWith("http") ? raw : `http://localhost:5001/${raw.replace(/^\//, "")}`;
+                    const nom = typeof p === "string" ? `Document ${i + 1}` : (p.nom || p.name || `Document ${i + 1}`);
                     return (
-                      <div key={i} className="border border-gray-200 rounded-xl overflow-hidden bg-gray-50">
-                        <div className="flex items-center justify-between px-4 py-2 bg-white border-b border-gray-100">
-                          <div className="flex items-center gap-2">
-                            <span className="text-lg">{isImage ? "🖼️" : isPdf ? "📄" : "📎"}</span>
-                            <span className="text-xs font-semibold text-gray-700 truncate max-w-[200px]">{p.nom || `Document ${i + 1}`}</span>
-                          </div>
-                          <a href={p.data} target="_blank" rel="noopener noreferrer" className="text-[11px] text-blue-600 font-bold hover:underline">Ouvrir ↗</a>
-                        </div>
-                        {isImage && p.data && (
-                          <div className="p-3">
-                            <img src={p.data} alt={p.nom} className="w-full max-h-64 object-contain rounded-lg cursor-pointer hover:opacity-90 transition" onClick={() => window.open(p.data, "_blank")} />
-                          </div>
-                        )}
-                        {isPdf && p.data && (
-                          <div className="p-3">
-                            <iframe src={p.data} className="w-full h-48 rounded-lg border border-gray-200" title={p.nom} />
-                          </div>
-                        )}
-                      </div>
+                      <a
+                        key={i}
+                        href={fullUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 bg-blue-50 text-blue-700 border border-blue-200 px-3 py-2 rounded-lg text-xs font-bold hover:bg-blue-100 transition truncate"
+                      >
+                        📄 {nom}
+                      </a>
                     );
                   })}
                 </div>
               )}
             </div>
           </div>
+
+          {/* Ayant droit — bloc conditionnel */}
+          {demande.pour_qui === "autre" && (
+            <div className="p-6 border-b border-gray-100">
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                <p className="text-xs text-amber-600 font-black uppercase tracking-widest mb-3">
+                  👨‍👩‍👧 Demande pour un ayant droit
+                </p>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <p className="text-xs text-gray-400 uppercase font-bold mb-1">Prénom</p>
+                    <p className="font-bold text-gray-800">{demande.ayant_prenom || "—"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-400 uppercase font-bold mb-1">Nom</p>
+                    <p className="font-bold text-gray-800">{demande.ayant_nom || "—"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-400 uppercase font-bold mb-1">Lien de parenté</p>
+                    <span className="bg-amber-100 text-amber-800 px-3 py-1 rounded-full text-xs font-semibold">
+                      {demande.ayant_lien || "—"}
+                    </span>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-400 uppercase font-bold mb-1">Date de naissance</p>
+                    <p className="text-gray-700">
+                      {demande.ayant_date_naiss ? new Date(demande.ayant_date_naiss).toLocaleDateString("fr-FR") : "—"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-400 uppercase font-bold mb-1">Téléphone</p>
+                    <p className="font-semibold text-gray-700">{demande.ayant_telephone || "—"}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Zone de décision */}
           <div className="p-6 space-y-4">
@@ -598,7 +746,7 @@ export default function FormulairePriseEnCharge() {
   const [showUploadModal, setShowUploadModal] = useState(false);
  const [isManualInput, setIsManualInput] = useState(false);
   const downloadPEC = useDownloadPEC();
-
+const [openCliniques, setOpenCliniques] = useState({});
   const inputLine = "border-b border-dotted border-black bg-transparent outline-none focus:bg-blue-50 px-1 transition-colors";
   const selectStyle = "border-b border-dotted border-black bg-transparent outline-none cursor-pointer hover:bg-blue-50 transition-colors";
 
@@ -617,6 +765,38 @@ export default function FormulairePriseEnCharge() {
       setDemandesEnLigne([]);
     }
   };
+// Fonction à ajouter dans FormulairePriseEnCharge
+const prefillFromDemande = (demande) => {
+  // Cherche l'utilisateur correspondant pour récupérer sa photo
+  const nomParts = (demande.nom_beneficiaire || "").trim().split(" ");
+  const nomSearch = nomParts[0] || "";
+
+  setFormData(prev => ({
+    ...prev,
+    fNom: demande.nom_beneficiaire || "",
+    fPrenom: "",                          // la demande n'a qu'un nom complet, tu peux splitter si besoin
+    fDateLieu: demande.date_naissance
+      ? `${new Date(demande.date_naissance).toLocaleDateString("fr-FR")} à ${demande.lieu_naissance || ""}`
+      : "",
+    fFonction: demande.fonction || "",
+    prestation: demande.type_prestation || "",
+    pNom: demande.nom_beneficiaire || "",
+    pPrenom: "",
+    pLien: "Lui-même",
+  }));
+
+  // Charge la photo si elle existe sur la demande
+  if (demande.photo) {
+    setPhotoUrl(
+      demande.photo.startsWith("http")
+        ? demande.photo
+        : `http://localhost:5001/${demande.photo.replace(/^\//, "")}`
+    );
+  }
+
+  setActiveTab("ajouter");
+};
+
 
 const fetchPrix = async () => {
   if (!formData.sfEtablissement) { 
@@ -677,17 +857,18 @@ const fetchPrix = async () => {
     fetchAgents();
   }, []);
 
-  useEffect(() => {
-    try {
-      const token = localStorage.getItem("token");
-      if (!token) return;
-      const payload = JSON.parse(atob(token.split(".")[1]));
-      const nom    = payload.nomComplet    || payload.nom    || payload.name  || payload.username || "";
-      const prenom = payload.prenomComplet || payload.prenom || payload.firstName || "";
-      setAgentConnecte(`${nom} ${prenom}`.trim() || "—");
-    } catch (e) {}
-  }, []);
-
+useEffect(() => {
+  try {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+    const payload = JSON.parse(atob(token.split(".")[1]));
+    const nom    = payload.nom    || "";
+    const prenom = payload.prenom || "";
+    setAgentConnecte(`${nom} ${prenom}`.trim().toUpperCase());
+  } catch (e) {
+    setAgentConnecte("—");
+  }
+}, []);
   useEffect(() => {
     const fetchTypesPrestations = async () => {
       try {
@@ -877,27 +1058,32 @@ const handleChange = (e) => {
       setIsBlocked(false);
     }
   };
+const ouvrirDossier = (demande) => {
+  // Prendre la version fraîche depuis demandesEnLigne si disponible
+  const fraiche = demandesEnLigne.find(d => d.id === demande.id) || demande;
+  setSelectedDemande(fraiche);
+  setShowModal(true);
+};
+// 2. Dans executerDecision, mettre à jour selectedDemande après la décision
+ const executerDecision = async (id, action, motif, messageClient) => {
+  try {
+    const body = action === "valider" 
+      ? { message_client: messageClient } 
+      : { motif_refus: motif, message_client: messageClient };
+      
+    const res = await apiFetch(
+      action === "valider" ? `/demandes/valider/${id}` : `/demandes/rejeter/${id}`,
+      { method: "POST", body: JSON.stringify(body) }
+    );
+    if (!res) throw new Error("Réponse serveur invalide");
+    
+    alert("✅ Action réussie !");
+    await fetchDemandesEnLigne();
 
-  const ouvrirDossier = (demande) => {
-    setSelectedDemande(demande);
-    setShowModal(true);
-  };
-
-  const executerDecision = async (id, action, motif, messageClient) => {
-    try {
-      const body = action === "valider" ? { message_client: messageClient } : { motif_refus: motif, message_client: messageClient };
-      const res = await apiFetch(
-        action === "valider" ? `/demandes/valider/${id}` : `/demandes/rejeter/${id}`,
-        { method: "POST", body: JSON.stringify(body) }
-      );
-      if (!res) throw new Error("Réponse serveur invalide");
-      alert("✅ Action réussie !");
-      await fetchDemandesEnLigne();
-    } catch (err) {
-      alert("❌ Erreur lors de la décision");
-    }
-  };
-
+  } catch (err) {
+    alert("❌ Erreur lors de la décision");
+  }
+};
   const annulerPrise = async (id) => {
     if (!window.confirm("Voulez-vous annuler cette prise en charge ?")) return;
     try {
@@ -928,30 +1114,132 @@ const handleChange = (e) => {
 
   return (
     <div className="min-h-screen bg-gray-100 py-4 font-serif print:bg-white print:p-0">
-      <style>{`
-        @keyframes slideDown { from { opacity:0; transform:translateY(-8px); } to { opacity:1; transform:translateY(0); } }
-        @keyframes fadeIn { from { opacity:0; transform:scale(0.97); } to { opacity:1; transform:scale(1); } }
-        .animate-slideDown { animation: slideDown 0.2s ease; }
-        .animate-fadeIn { animation: fadeIn 0.2s ease; }
-        @media print {
-          .tabs-nav, .tab-en-ligne, .tab-consulter, nav, header, select { display: none !important; }
-          @page { margin: 10mm; }
-          input[type="text"], input:not([type]) { border: none !important; border-bottom: 1.5px solid black !important; background: transparent !important; min-width: 100px; }
-          .sf-line-empty { border-bottom: 1.5px solid black !important; min-width: 80px; display: inline-block; }
-        }
-        .print-field { display: inline-block; min-width: 160px; border-bottom: 1px dotted black; padding: 2px 4px; font-weight: bold; text-transform: uppercase; }
-        .print-field:empty::after { content: "____________________"; letter-spacing: 2px; }
-      `}</style>
+   <style>{`
+  @keyframes slideDown { from { opacity:0; transform:translateY(-8px); } to { opacity:1; transform:translateY(0); } }
+  @keyframes fadeIn { from { opacity:0; transform:scale(0.97); } to { opacity:1; transform:scale(1); } }
+  .animate-slideDown { animation: slideDown 0.2s ease; }
+  .animate-fadeIn { animation: fadeIn 0.2s ease; }
+
+  @media print {
+    /* ✅ Cache tout sauf le formulaire */
+    .tabs-nav, .tab-en-ligne, .tab-consulter, nav, header { display: none !important; }
+    
+    /* ✅ Reset complet pour l'impression */
+    * { box-sizing: border-box !important; }
+    
+    html, body {
+      margin: 0 !important;
+      padding: 0 !important;
+      width: 210mm !important;
+      max-width: 210mm !important;
+    }
+
+  @page {
+    size: A4 portrait;
+    margin: 10mm 15mm 10mm 15mm;
+    /* Supprime les en-têtes/pieds de page du navigateur */
+    margin-top: 10mm;
+  }
+     html {
+    margin: 0 !important;
+  }
+    /* ✅ Le conteneur principal prend toute la largeur */
+    .min-h-screen {
+      background: white !important;
+      padding: 0 !important;
+      margin: 0 !important;
+    }
+
+    /* ✅ Le formulaire s'adapte à la page */
+    .mx-auto.w-\\[210mm\\] {
+      width: 100% !important;
+      max-width: 100% !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      box-shadow: none !important;
+      border: none !important;
+    }
+
+    /* ✅ Cache les selects — affiche leur valeur en texte */
+    select {
+      -webkit-appearance: none !important;
+      border: none !important;
+      border-bottom: 1.5px solid black !important;
+      background: transparent !important;
+    }
+
+    input[type="text"], input[type="date"], input:not([type]) {
+      border: none !important;
+      border-bottom: 1.5px solid black !important;
+      background: transparent !important;
+      min-width: 80px;
+    }
+
+    input[type="radio"] { display: inline !important; }
+
+    .sf-line-empty {
+      border-bottom: 1.5px solid black !important;
+      min-width: 80px;
+      display: inline-block;
+    }
+
+    /* ✅ Cache les boutons flottants */
+    .fixed { display: none !important; }
+
+    /* ✅ Empêche les coupures dans les sections importantes */
+    .border-t { page-break-inside: avoid; }
+  }
+
+  .print-field {
+    display: inline-block;
+    min-width: 160px;
+    border-bottom: 1px dotted black;
+    padding: 2px 4px;
+    font-weight: bold;
+    text-transform: uppercase;
+  }
+  .print-field:empty::after {
+    content: "____________________";
+    letter-spacing: 2px;
+  }
+    @media print {
+  /* Cache la sidebar — adapte le sélecteur à ton layout */
+  aside,
+  nav,
+  [class*="sidebar"],
+  [class*="Sidebar"],
+  [class*="side-bar"],
+  [id*="sidebar"],
+  
+  /* Si c'est un div avec une classe spécifique */
+  .sidebar,
+  .nav-sidebar,
+  .left-panel { 
+    display: none !important; 
+  }
+
+  /* ✅ Le contenu principal prend toute la largeur */
+  main,
+  [class*="main-content"],
+  [class*="content"] {
+    margin-left: 0 !important;
+    padding-left: 0 !important;
+    width: 100% !important;
+  }
+}
+`}</style>
 
       {/* ── MODALS ── */}
       {showModal && (
-        <DossierModal
-          demande={selectedDemande}
-          onClose={() => { setShowModal(false); setSelectedDemande(null); }}
-          onDecision={executerDecision}
-          cliniques={cliniques}
-          onUploadSuccess={fetchDemandesEnLigne}
-        />
+        // Dans le JSX du DossierModal, ajoute le prop :
+<DossierModal
+  demande={selectedDemande}
+  onClose={() => { setShowModal(false); setSelectedDemande(null); }}
+  onDecision={executerDecision}
+  cliniques={cliniques}
+  onUploadSuccess={fetchDemandesEnLigne}
+  onPrefillForm={prefillFromDemande}   // ← ajouter
+/>
       )}
       {showPrixModal && (
         <PrixModal prixList={prixList} onClose={() => setShowPrixModal(false)} onConfirm={(total) => setFormData(prev => ({ ...prev, montantTotal: total }))} />
@@ -1039,36 +1327,43 @@ const handleChange = (e) => {
                     const pieces = d.pieces || [];
                     const hasPEC = !!d.fichier_prise_en_charge;
                     return (
-                      <tr key={d.id} className="hover:bg-blue-50/40 transition-colors">
-                        <td className="px-5 py-4">
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-700 font-black text-xs">
-                              {d.nom_beneficiaire?.charAt(0)?.toUpperCase()}
-                            </div>
-                            <span className="font-bold text-gray-800 text-sm">{d.nom_beneficiaire}</span>
-                          </div>
-                        </td>
-                        <td className="px-5 py-4">
-                          <span className="bg-gray-100 px-2 py-1 rounded-full text-[11px] font-medium text-gray-600">{d.type_prestation}</span>
-                        </td>
-                        <td className="px-5 py-4">
-                          {pieces.length > 0 ? (
-                            <button onClick={() => ouvrirDossier(d)} className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 border border-blue-200 px-2 py-1 rounded-full text-[11px] font-bold hover:bg-blue-100 transition">
-                              📎 {pieces.length} fichier{pieces.length > 1 ? "s" : ""}
-                            </button>
-                          ) : (
-                            <span className="text-gray-300 text-xs">—</span>
-                          )}
-                        </td>
-
-                        <td className="px-5 py-4"><StatusBadge status={d.statut} /></td>
-                        <td className="px-5 py-4 text-xs text-gray-400">{new Date(d.createdAt).toLocaleDateString('fr-FR')}</td>
-                        <td className="px-5 py-4 text-right">
-                          <button onClick={() => ouvrirDossier(d)} className="bg-gray-900 text-white text-[10px] px-4 py-2 rounded-lg hover:bg-black transition font-bold">
-                            OUVRIR →
-                          </button>
-                        </td>
-                      </tr>
+              <tr key={d.id} className="hover:bg-blue-50/40 transition-colors">
+  <td className="px-5 py-4">
+    <div className="flex items-center gap-3">
+      <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-700 font-black text-xs">
+        {d.nom_beneficiaire?.charAt(0)?.toUpperCase()}
+      </div>
+      <div>
+        <span className="font-bold text-gray-800 text-sm">{d.nom_beneficiaire}</span>
+        {d.pour_qui === "autre" && d.ayant_nom && (
+          <p className="text-[11px] text-amber-600 font-semibold mt-0.5">
+            👨‍👩‍👧 Ayant droit : {d.ayant_prenom} {d.ayant_nom}
+            {d.ayant_lien && ` (${d.ayant_lien})`}
+          </p>
+        )}
+      </div>
+    </div>
+  </td>
+  <td className="px-5 py-4">
+    <span className="bg-gray-100 px-2 py-1 rounded-full text-[11px] font-medium text-gray-600">{d.type_prestation}</span>
+  </td>
+  <td className="px-5 py-4">
+    {pieces.length > 0 ? (
+      <button onClick={() => ouvrirDossier(d)} className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 border border-blue-200 px-2 py-1 rounded-full text-[11px] font-bold hover:bg-blue-100 transition">
+        📎 {pieces.length} fichier{pieces.length > 1 ? "s" : ""}
+      </button>
+    ) : (
+      <span className="text-gray-300 text-xs">—</span>
+    )}
+  </td>
+  <td className="px-5 py-4"><StatusBadge status={d.statut} /></td>
+  <td className="px-5 py-4 text-xs text-gray-400">{new Date(d.createdAt).toLocaleDateString('fr-FR')}</td>
+  <td className="px-5 py-4 text-right">
+    <button onClick={() => ouvrirDossier(d)} className="bg-gray-900 text-white text-[10px] px-4 py-2 rounded-lg hover:bg-black transition font-bold">
+      OUVRIR →
+    </button>
+  </td>
+</tr>
                     );
                   })}
                 </tbody>
@@ -1237,171 +1532,414 @@ const handleChange = (e) => {
             </div>
           </div>
 
-          <div className="mt-10">
-            <h2 className="text-center font-bold text-lg underline uppercase">Service Fait</h2>
-            <div className="space-y-4 mt-4">
-              <div className="flex gap-2"><span>Nom et Prénom du patient :</span> <div className="flex-1 border-b border-black font-bold uppercase sf-line-empty"></div></div>
-              <div className="flex gap-2"><span>Date et lieu de Naissance :</span> <div className="flex-1 border-b border-black font-bold uppercase sf-line-empty"></div></div>
-              <div className="flex gap-2"><span>Désignation de la prestation :</span> <div className="flex-1 border-b border-black sf-line-empty"></div></div>
-              <div className="flex gap-2 font-bold"><span>Montant de la prestation "70%" :</span> <div className="flex-1 border-b border-black sf-line-empty"></div> <span>DA</span></div>
-              <div className="flex justify-between items-end pt-6">
-                <QRCodeSVG value={qrData} size={80} />
-                <div className="text-center min-w-[250px]">
-                  <p className="font-bold italic mb-1 text-[11px]">La Clinique / Le Laboratoire</p>
-                  <select name="sfEtablissement" value={formData.sfEtablissement || ""} onChange={handleChange} className="w-full text-center font-black text-red-700 bg-transparent border-b border-black outline-none uppercase">
-                    <option value="">-- Choisir une clinique --</option>
-                    {cliniques.map((c) => (<option key={c.id} value={String(c.id)}>{c.nom || c.nom_clinique}</option>))}
-                  </select>
-                </div>
-              </div>
-            </div>
-          </div>
+     {/* ── BAS DU FORMULAIRE : SERVICE FAIT + QR + SIGNATURES ── */}
+<div className="mt-10" style={{ fontFamily: "'Times New Roman', serif", fontSize: "12px", color: "#000" }}>
 
-          <div className="mt-6 pt-3 border-t border-dashed border-gray-300 text-[11px] text-gray-600 flex justify-between items-center print:border-gray-400">
-            <div>
-              <span className="font-bold uppercase text-gray-500">Établi par : </span>
-              <span className="font-black text-gray-800 uppercase">{agentConnecte || formData.agentNom || "—"}</span>
-            </div>
-            <div className="text-gray-400 text-[10px]">{new Date().toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })}</div>
-          </div>
+  {/* Ligne séparatrice */}
+  <hr style={{ border: "none", borderTop: "1.5px solid black", margin: "0 0 12px 0" }} />
+
+  <h2 style={{ textAlign: "center", fontSize: "14px", fontWeight: "bold", textDecoration: "underline", textTransform: "uppercase", marginBottom: "14px", letterSpacing: "1px" }}>
+    Service Fait
+  </h2>
+
+  {/* Lignes à remplir */}
+  <div style={{ display: "flex", alignItems: "flex-end", gap: "6px", marginBottom: "10px" }}>
+    <span>Nom et Prénom du patient :</span>
+    <div style={{ flex: 1, borderBottom: "1px solid black" }}></div>
+  </div>
+  <div style={{ display: "flex", alignItems: "flex-end", gap: "6px", marginBottom: "10px" }}>
+    <span>Date et lieu de Naissance :</span>
+    <div style={{ flex: 1, borderBottom: "1px solid black" }}></div>
+  </div>
+  <div style={{ display: "flex", alignItems: "flex-end", gap: "6px", marginBottom: "10px" }}>
+    <span>Désignation de la prestation :</span>
+    <div style={{ flex: 1, borderBottom: "1px solid black" }}></div>
+  </div>
+  <div style={{ display: "flex", alignItems: "flex-end", gap: "6px", marginBottom: "10px", fontWeight: "bold" }}>
+    <span>Montant de la prestation "70%" :</span>
+    <div style={{ flex: 1, borderBottom: "1px solid black" }}></div>
+    <span>DA</span>
+  </div>
+
+  {/* QR + Clinique */}
+  {/* QR + Clinique */}
+  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginTop: "20px" }}>
+
+    <div style={{ minWidth: "220px" }}></div>
+
+    {/* QR code au centre */}
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "6px", flex: 1 }}>
+      <div style={{ border: "3px solid black", padding: "5px", display: "inline-block" }}>
+        <QRCodeSVG value={qrData} size={90} />
+      </div>
+      <p style={{ fontSize: "9px", textAlign: "center", margin: 0, color: "#000" }}>
+        Scannez ce code pour authentifier le document.
+      </p>
+      <p style={{ fontSize: "9px", textAlign: "center", margin: 0, color: "#555" }}>
+        Œuvres Sociales — UMMTO
+      </p>
+    </div>
+
+    {/* Signature clinique à droite */}
+    <div style={{ textAlign: "center", minWidth: "220px" }}>
+      <p style={{ fontSize: "11px", fontWeight: "bold", fontStyle: "italic", marginBottom: "4px" }}>
+        La Clinique / Le Laboratoire
+      </p>
+      <select
+        name="sfEtablissement"
+        value={formData.sfEtablissement || ""}
+        onChange={handleChange}
+        style={{ width: "100%", textAlign: "center", fontWeight: "bold", color: "#7f1d1d", background: "transparent", border: "none", borderBottom: "1px solid black", outline: "none", textTransform: "uppercase", fontSize: "12px" }}
+      >
+        <option value="">-- Choisir une clinique --</option>
+        {cliniques.map((c) => (
+          <option key={c.id} value={String(c.id)}>{c.nom || c.nom_clinique}</option>
+        ))}
+      </select>
+      <div style={{ borderTop: "1px solid black", marginTop: "40px", width: "180px", marginLeft: "auto", marginRight: "auto" }}></div>
+    </div>
+
+  </div>
+  
+  {/* Établi par + date */}
+<div className="mt-6 pt-3 border-t border-dashed border-gray-300 text-[11px] text-gray-600 flex justify-between items-center print:border-gray-400">
+  <div>
+    <span className="font-bold uppercase text-gray-500">Établi par : </span>
+    <span className="font-black text-gray-800 uppercase">{agentConnecte || formData.agentNom || "—"}</span>
+  </div>
+  <div className="text-gray-400 text-[10px]">{new Date().toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })}</div>
+</div>
+
+</div>
+
         </div>
       )}
 
       {/* ── ONGLET : HISTORIQUE ── */}
-      {activeTab === "consulter" && (() => {
-        const historiqueFiltré = history.filter(item => {
-          const date = new Date(item.createdAt);
-          if (filtreDebut && date < new Date(filtreDebut)) return false;
-          if (filtreFin && date > new Date(filtreFin + "T23:59:59")) return false;
-          const nomPatient = `${item.pNom || ""} ${item.pPrenom || ""}`.toLowerCase();
-          const nomFonct = `${item.fNom || ""} ${item.fPrenom || ""}`.toLowerCase();
-          if (filtreNom && !nomPatient.includes(filtreNom.toLowerCase()) && !nomFonct.includes(filtreNom.toLowerCase())) return false;
-          return true;
-        });
 
-        const exportCSV = () => {
-          const header = ["Référence","Patient","Fonctionnaire","Prestation","Montant Total","Part OS (70%)","Part Perso (30%)","Date","Agent","Statut"];
-          const rows = historiqueFiltré.map(i => [
-            i.ref || i.numeroSequentiel || "", `${i.pNom || ""} ${i.pPrenom || ""}`.trim(),
-            `${i.fNom || ""} ${i.fPrenom || ""}`.trim(), i.prestation || "",
-            i.montantTotal || 0, Math.round((i.montantTotal || 0) * 0.7), Math.round((i.montantTotal || 0) * 0.3),
-            new Date(i.createdAt).toLocaleDateString("fr-FR"), i.agentNom || "", i.annule ? "Annulée" : "Active"
-          ]);
-          const csv = [header, ...rows].map(r => r.join(";")).join("\n");
-          const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement("a"); a.href = url;
-          a.download = `prises_en_charge_${new Date().toLocaleDateString("fr-FR").replace(/\//g, "-")}.csv`;
-          a.click();
-        };
+{activeTab === "consulter" && (() => {
+  const historiqueFiltré = history.filter(item => {
+    const date = new Date(item.createdAt);
+    if (filtreDebut && date < new Date(filtreDebut)) return false;
+    if (filtreFin && date > new Date(filtreFin + "T23:59:59")) return false;
+    const nomPatient = `${item.pNom || ""} ${item.pPrenom || ""}`.toLowerCase();
+    const nomFonct = `${item.fNom || ""} ${item.fPrenom || ""}`.toLowerCase();
+    if (filtreNom && !nomPatient.includes(filtreNom.toLowerCase()) && !nomFonct.includes(filtreNom.toLowerCase())) return false;
+    return true;
+  });
 
-        return (
-          <div className="tab-consulter mx-auto w-full max-w-5xl px-4">
-            <div className="bg-white p-6 rounded-xl border border-gray-200 min-h-[600px]">
-              <div className="flex justify-between items-center border-b pb-4 mb-5">
-                <h2 className="text-xl font-bold text-blue-800">Historique {new Date().getFullYear()}</h2>
-                <span className="text-sm bg-blue-100 px-3 py-1 rounded text-blue-600">{historiqueFiltré.length} / {history.length} entrées</span>
-              </div>
+  // ── Groupement par clinique ──────────────────────────────────────────────
+  const groupesByClinique = historiqueFiltré.reduce((acc, item) => {
+    const key = String(item.sfEtablissement || "inconnu");
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(item);
+    return acc;
+  }, {});
 
-              <div className="flex gap-3 mb-5 flex-wrap items-end bg-gray-50 p-3 rounded-xl">
-                <div>
-                  <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Du</label>
-                  <input type="date" value={filtreDebut} onChange={e => setFiltreDebut(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-300" />
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Au</label>
-                  <input type="date" value={filtreFin} onChange={e => setFiltreFin(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-300" />
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Recherche</label>
-                  <input type="text" value={filtreNom} onChange={e => setFiltreNom(e.target.value)} placeholder="Nom patient ou fonctionnaire..."
-                    className="border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-300 w-52" />
-                </div>
-                <button onClick={() => { setFiltreDebut(""); setFiltreFin(""); setFiltreNom(""); }} className="px-4 py-2 bg-gray-200 text-gray-600 rounded-lg text-sm font-bold hover:bg-gray-300">🔄 Réinitialiser</button>
-                <button onClick={exportCSV} className="px-4 py-2 bg-green-700 text-white rounded-lg text-sm font-bold hover:bg-green-800 flex items-center gap-2 ml-auto">⬇️ Télécharger CSV</button>
-              </div>
+  const cliqueIds = Object.keys(groupesByClinique).sort();
 
-              {historiqueFiltré.length > 0 && (
-                <div className="grid grid-cols-3 gap-3 mb-5">
-                  {[
-                    { label: "Total montants", val: historiqueFiltré.filter(i => !i.annule).reduce((s, i) => s + parseFloat(i.montantTotal || 0), 0), color: "blue" },
-                    { label: "Part OS (70%)", val: historiqueFiltré.filter(i => !i.annule).reduce((s, i) => s + Math.round(parseFloat(i.montantTotal || 0) * 0.7), 0), color: "green" },
-                    { label: "Part Perso (30%)", val: historiqueFiltré.filter(i => !i.annule).reduce((s, i) => s + Math.round(parseFloat(i.montantTotal || 0) * 0.3), 0), color: "orange" },
-                  ].map(({ label, val, color }) => (
-                    <div key={label} className={`bg-${color}-50 border border-${color}-100 rounded-xl p-3`}>
-                      <p className={`text-xs font-bold text-${color}-500 uppercase`}>{label}</p>
-                      <p className={`text-lg font-black text-${color}-700`}>{val.toLocaleString("fr-FR")} DA</p>
+  const toggleClinique = (id) => {
+    setOpenCliniques(prev => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const toggleAll = (val) => {
+    const next = {};
+    cliqueIds.forEach(id => { next[id] = val; });
+    setOpenCliniques(next);
+  };
+
+  // ── Stats globales ───────────────────────────────────────────────────────
+  const totalMontant = historiqueFiltré
+    .filter(i => !i.annule)
+    .reduce((s, i) => s + parseFloat(i.montantTotal || 0), 0);
+  const totalPartOS = Math.round(totalMontant * 0.7);
+  const totalPartPerso = Math.round(totalMontant * 0.3);
+
+  const exportCSV = () => {
+    const header = ["Référence","Patient","Fonctionnaire","Prestation","Montant Total","Part OS (70%)","Part Perso (30%)","Date","Agent","Statut","Clinique"];
+    const rows = historiqueFiltré.map(i => {
+      const clinique = cliniques.find(c => String(c.id) === String(i.sfEtablissement));
+      return [
+        i.ref || i.numeroSequentiel || "",
+        `${i.pNom || ""} ${i.pPrenom || ""}`.trim(),
+        `${i.fNom || ""} ${i.fPrenom || ""}`.trim(),
+        i.prestation || "",
+        i.montantTotal || 0,
+        Math.round((i.montantTotal || 0) * 0.7),
+        Math.round((i.montantTotal || 0) * 0.3),
+        new Date(i.createdAt).toLocaleDateString("fr-FR"),
+        i.agentNom || "",
+        i.annule ? "Annulée" : "Active",
+        clinique?.nom || clinique?.nom_clinique || i.sfEtablissement || "—",
+      ];
+    });
+    const csv = [header, ...rows].map(r => r.join(";")).join("\n");
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `prises_en_charge_${new Date().toLocaleDateString("fr-FR").replace(/\//g, "-")}.csv`;
+    a.click();
+  };
+
+  // ── Couleurs par index de clinique ───────────────────────────────────────
+  const PALETTE = [
+    { border: "#185FA5", bg: "#E6F1FB", text: "#0C447C" },
+    { border: "#0F6E56", bg: "#E1F5EE", text: "#085041" },
+    { border: "#993C1D", bg: "#FAECE7", text: "#712B13" },
+    { border: "#993556", bg: "#FBEAF0", text: "#72243E" },
+    { border: "#3B6D11", bg: "#EAF3DE", text: "#27500A" },
+    { border: "#854F0B", bg: "#FAEEDA", text: "#633806" },
+    { border: "#534AB7", bg: "#EEEDFE", text: "#3C3489" },
+  ];
+
+  return (
+    <div className="tab-consulter mx-auto w-full max-w-5xl px-4 pb-10">
+
+      {/* ── Stats globales ── */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+        {[
+          { label: "Dossiers", val: historiqueFiltré.length, sub: "tous statuts" },
+          { label: "Actifs", val: historiqueFiltré.filter(i => !i.annule).length, sub: "en cours", color: "emerald" },
+          { label: "Annulés", val: historiqueFiltré.filter(i => i.annule).length, sub: "révoqués", color: "red" },
+          { label: "Montant total", val: `${totalMontant.toLocaleString("fr-FR")} DA`, sub: `OS: ${totalPartOS.toLocaleString("fr-FR")} DA`, color: "blue" },
+        ].map(({ label, val, sub, color }) => (
+          <div key={label} className={`bg-white rounded-xl border border-gray-200 p-4 ${color ? `border-l-4 border-l-${color}-500` : ""}`}>
+            <p className="text-[10px] font-bold uppercase text-gray-400">{label}</p>
+            <p className={`text-xl font-black mt-0.5 ${color ? `text-${color}-700` : "text-gray-800"}`}>{val}</p>
+            {sub && <p className="text-[10px] text-gray-400 mt-0.5">{sub}</p>}
+          </div>
+        ))}
+      </div>
+
+      {/* ── Barre filtres ── */}
+      <div className="flex gap-2 mb-4 flex-wrap items-end bg-white border border-gray-200 rounded-xl p-3">
+        <div>
+          <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Du</label>
+          <input type="date" value={filtreDebut} onChange={e => setFiltreDebut(e.target.value)}
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-300" />
+        </div>
+        <div>
+          <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Au</label>
+          <input type="date" value={filtreFin} onChange={e => setFiltreFin(e.target.value)}
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-300" />
+        </div>
+        <div>
+          <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Recherche</label>
+          <input type="text" value={filtreNom} onChange={e => setFiltreNom(e.target.value)}
+            placeholder="Nom patient ou fonctionnaire..."
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-300 w-52" />
+        </div>
+        <button onClick={() => { setFiltreDebut(""); setFiltreFin(""); setFiltreNom(""); }}
+          className="px-4 py-2 bg-gray-100 text-gray-600 rounded-lg text-sm font-bold hover:bg-gray-200">
+          🔄 Réinitialiser
+        </button>
+        <div className="ml-auto flex gap-2">
+          <button onClick={() => toggleAll(true)}
+            className="px-3 py-2 bg-gray-100 text-gray-600 rounded-lg text-xs font-bold hover:bg-gray-200">
+            Tout ouvrir
+          </button>
+          <button onClick={() => toggleAll(false)}
+            className="px-3 py-2 bg-gray-100 text-gray-600 rounded-lg text-xs font-bold hover:bg-gray-200">
+            Tout fermer
+          </button>
+          <button onClick={exportCSV}
+            className="px-4 py-2 bg-green-700 text-white rounded-lg text-sm font-bold hover:bg-green-800 flex items-center gap-2">
+            ⬇️ CSV
+          </button>
+        </div>
+      </div>
+
+      {/* ── Résumé filtré ── */}
+      <p className="text-xs text-gray-400 mb-3 px-1">
+        {historiqueFiltré.length} dossier{historiqueFiltré.length > 1 ? "s" : ""} · {cliqueIds.length} clinique{cliqueIds.length > 1 ? "s" : ""} · {new Date().getFullYear()}
+      </p>
+
+      {/* ── Blocs cliniques ── */}
+      {cliqueIds.length === 0 ? (
+        <div className="bg-white border border-dashed border-gray-200 rounded-xl p-12 text-center text-gray-400">
+          <p className="text-3xl mb-2">🗂️</p>
+          <p className="text-sm">Aucune prise en charge trouvée</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {cliqueIds.map((cid, idx) => {
+            const rows = groupesByClinique[cid];
+            const clinique = cliniques.find(c => String(c.id) === cid);
+            const nomClinique = clinique?.nom || clinique?.nom_clinique || `Établissement #${cid}`;
+            const actifs = rows.filter(r => !r.annule);
+            const annules = rows.filter(r => r.annule);
+            const sousTotal = actifs.reduce((s, r) => s + parseFloat(r.montantTotal || 0), 0);
+            const isOpen = !!openCliniques[cid];
+            const pal = PALETTE[idx % PALETTE.length];
+
+            return (
+              <div key={cid} className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+
+                {/* ── En-tête clinique (cliquable) ── */}
+                <button
+                  onClick={() => toggleClinique(cid)}
+                  className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-gray-50 transition-colors text-left"
+                  style={{ borderLeft: `4px solid ${pal.border}` }}
+                >
+                  {/* Icône */}
+                  <div className="w-9 h-9 rounded-lg flex items-center justify-center text-lg flex-shrink-0"
+                    style={{ background: pal.bg }}>
+                    🏥
+                  </div>
+
+                  {/* Infos */}
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold text-gray-800 text-sm truncate">{nomClinique}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {rows.length} dossier{rows.length > 1 ? "s" : ""} · Montant actif : {sousTotal.toLocaleString("fr-FR")} DA
+                    </p>
+                  </div>
+
+                  {/* Badges */}
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    {actifs.length > 0 && (
+                      <span className="bg-emerald-100 text-emerald-700 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                        {actifs.length} actif{actifs.length > 1 ? "s" : ""}
+                      </span>
+                    )}
+                    {annules.length > 0 && (
+                      <span className="bg-red-100 text-red-600 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                        {annules.length} annulé{annules.length > 1 ? "s" : ""}
+                      </span>
+                    )}
+                    <span className="bg-blue-50 text-blue-700 text-[10px] font-bold px-2.5 py-0.5 rounded-full border border-blue-100">
+                      {sousTotal.toLocaleString("fr-FR")} DA
+                    </span>
+                    <span className={`text-gray-400 text-sm transition-transform duration-200 ${isOpen ? "rotate-90" : ""}`}>
+                      ›
+                    </span>
+                  </div>
+                </button>
+
+                {/* ── Liste des dossiers ── */}
+                {isOpen && (
+                  <div className="border-t border-gray-100">
+
+                    {/* En-tête colonnes */}
+                    <div className="grid grid-cols-12 gap-2 px-5 py-2 bg-gray-50 text-[10px] font-bold uppercase text-gray-400 border-b border-gray-100">
+                      <div className="col-span-2">Référence</div>
+                      <div className="col-span-2">Patient</div>
+                      <div className="col-span-2">Fonctionnaire</div>
+                      <div className="col-span-2">Prestation</div>
+                      <div className="col-span-1 text-right">Montant</div>
+                      <div className="col-span-1">Date</div>
+                      <div className="col-span-1 text-center">Statut</div>
+                      <div className="col-span-1 text-center">Actions</div>
                     </div>
-                  ))}
-                </div>
-              )}
 
-              <div className="overflow-x-auto">
-                {historiqueFiltré.length === 0 ? (
-                  <p className="text-gray-400 italic text-center py-20">Aucune prise en charge trouvée.</p>
-                ) : (
-                  <table className="w-full text-left text-[12px] border-collapse">
-                    <thead>
-                      <tr className="bg-gray-50 border-b-2 text-[11px] uppercase text-gray-500">
-                        <th className="p-3">Référence</th>
-                        <th className="p-3">Patient</th>
-                        <th className="p-3">Fonctionnaire</th>
-                        <th className="p-3">Prestation</th>
-                        <th className="p-3 text-right">Montant</th>
-                        <th className="p-3">Date</th>
-                        <th className="p-3 text-center">Statut</th>
-                        <th className="p-3">Agent</th>
-                        <th className="p-3 text-center">PDF</th>
-                        <th className="p-3 text-center">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {historiqueFiltré.map((item) => (
-                        <tr key={item.id} className={`border-b transition-colors ${item.annule ? "bg-red-50 opacity-60" : "hover:bg-blue-50"}`}>
-                          <td className="p-3 font-mono font-bold text-xs">
-                            <span className={item.annule ? "line-through text-gray-400" : ""}>{item.ref || item.numeroSequentiel || "—"}</span>
-                          </td>
-                          <td className="p-3 font-bold uppercase">
-                            <span className={item.annule ? "line-through text-gray-400" : ""}>
-                              {item.pNom && item.pPrenom ? `${item.pNom} ${item.pPrenom}` : item.fNom && item.fPrenom ? `${item.fNom} ${item.fPrenom}` : "—"}
+                    {/* Lignes */}
+                    {rows.map(item => {
+                      const patient = (item.pNom && item.pPrenom)
+                        ? `${item.pNom} ${item.pPrenom}`
+                        : `${item.fNom || ""} ${item.fPrenom || ""}`.trim() || "—";
+
+                      return (
+                        <div
+                          key={item.id}
+                          className={`grid grid-cols-12 gap-2 px-5 py-3 border-b border-gray-50 text-[12px] items-center transition-colors
+                            ${item.annule ? "bg-red-50/40 opacity-60" : "hover:bg-blue-50/30"}`}
+                        >
+                          {/* Référence */}
+                          <div className="col-span-2 font-mono text-[11px] text-gray-500 truncate">
+                            <span className={item.annule ? "line-through" : ""}>{item.ref || item.numeroSequentiel || "—"}</span>
+                          </div>
+
+                          {/* Patient */}
+                          <div className="col-span-2 font-bold text-gray-800 uppercase truncate text-[11px]" title={patient}>
+                            <span className={item.annule ? "line-through text-gray-400" : ""}>{patient}</span>
+                          </div>
+
+                          {/* Fonctionnaire */}
+                          <div className="col-span-2 text-gray-500 truncate text-[11px]" title={`${item.fNom} ${item.fPrenom}`}>
+                            <span className={item.annule ? "line-through" : ""}>{item.fNom} {item.fPrenom}</span>
+                          </div>
+
+                          {/* Prestation */}
+                          <div className="col-span-2">
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium truncate block max-w-full
+                              ${item.annule ? "bg-gray-100 text-gray-400 line-through" : "bg-blue-50 text-blue-700"}`}>
+                              {item.prestation}
                             </span>
-                          </td>
-                          <td className="p-3 text-gray-600"><span className={item.annule ? "line-through text-gray-400" : ""}>{item.fNom} {item.fPrenom}</span></td>
-                          <td className="p-3">
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${item.annule ? "bg-gray-100 text-gray-400 line-through" : "bg-blue-50 text-blue-700"}`}>{item.prestation}</span>
-                          </td>
-                          <td className="p-3 text-right font-bold text-blue-900">
-                            <span className={item.annule ? "line-through text-gray-400" : ""}>{(item.montantTotal || 0).toLocaleString("fr-FR")} DA</span>
-                          </td>
-                          <td className="p-3 text-gray-500 text-xs">{new Date(item.createdAt).toLocaleDateString("fr-FR")}</td>
-                          <td className="p-3 text-center">
-                            {item.annule ? <span className="text-red-400 text-[10px] font-bold italic">Annulée</span> : <span className="text-green-600 text-[10px] font-bold">Active</span>}
-                          </td>
-                          <td className="p-3 text-xs text-gray-500 font-semibold uppercase">{item.agentNom || "—"}</td>
-                          <td className="p-3 text-center">
+                          </div>
+
+                          {/* Montant */}
+                          <div className="col-span-1 text-right">
+                            <span className={`font-bold text-[11px] ${item.annule ? "text-gray-400 line-through" : "text-blue-900"}`}>
+                              {(item.montantTotal || 0).toLocaleString("fr-FR")} DA
+                            </span>
+                          </div>
+
+                          {/* Date */}
+                          <div className="col-span-1 text-gray-400 text-[10px]">
+                            {new Date(item.createdAt).toLocaleDateString("fr-FR")}
+                          </div>
+
+                          {/* Statut */}
+                          <div className="col-span-1 text-center">
+                            {item.annule
+                              ? <span className="text-red-400 text-[10px] font-bold italic">Annulée</span>
+                              : <span className="text-emerald-600 text-[10px] font-bold">Active</span>
+                            }
+                          </div>
+
+                          {/* Actions */}
+                          <div className="col-span-1 flex gap-1 justify-center">
                             <button
                               onClick={() => downloadPEC(item, cliniques)}
-                              title="Télécharger la prise en charge en PDF"
+                              title="Télécharger PDF"
                               className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-1 rounded-lg text-[10px] font-bold hover:bg-indigo-100 transition"
                             >
-                              ⬇️ PDF
+                              ⬇️
                             </button>
-                          </td>
-                          <td className="p-3 text-center">
                             {!item.annule && (
-                              <button onClick={() => annulerPrise(item.id)} className="bg-red-500 text-white px-3 py-1 rounded-lg text-xs hover:bg-red-600 font-bold">Annuler</button>
+                              <button
+                                onClick={() => annulerPrise(item.id)}
+                                title="Annuler"
+                                className="bg-red-50 text-red-600 border border-red-200 px-2 py-1 rounded-lg text-[10px] font-bold hover:bg-red-100 transition"
+                              >
+                                ✕
+                              </button>
                             )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {/* ── Sous-total clinique ── */}
+                    <div className="flex items-center gap-6 px-5 py-2.5 bg-gray-50 text-[11px] border-t border-gray-200">
+                      <span className="text-gray-500">
+                        Sous-total actif :
+                        <strong className="text-gray-800 ml-1">{sousTotal.toLocaleString("fr-FR")} DA</strong>
+                      </span>
+                      <span className="text-gray-400">
+                        Part OS (70%) :
+                        <strong className="text-emerald-700 ml-1">{Math.round(sousTotal * 0.7).toLocaleString("fr-FR")} DA</strong>
+                      </span>
+                      <span className="text-gray-400">
+                        Part perso (30%) :
+                        <strong className="text-orange-700 ml-1">{Math.round(sousTotal * 0.3).toLocaleString("fr-FR")} DA</strong>
+                      </span>
+                      <span className="ml-auto text-gray-400">
+                        Agent : <strong className="text-gray-600">{rows[0]?.agentNom || "—"}</strong>
+                      </span>
+                    </div>
+
+                  </div>
                 )}
               </div>
-            </div>
-          </div>
-        );
-      })()}
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+})()}
 
       {/* ── BOUTONS FLOTTANTS ── */}
       {activeTab === "ajouter" && (
