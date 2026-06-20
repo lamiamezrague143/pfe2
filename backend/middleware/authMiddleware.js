@@ -1,5 +1,9 @@
 const jwt = require("jsonwebtoken");
-const logger = require("../config/logger"); // adapte le chemin
+const logger = require("../config/logger");
+
+if (!process.env.JWT_SECRET) {
+  throw new Error("JWT_SECRET manquant dans les variables d'environnement");
+}
 
 module.exports = (roles = []) => {
   return (req, res, next) => {
@@ -11,7 +15,7 @@ module.exports = (roles = []) => {
       }
 
       const token = authHeader.split(" ")[1];
-      const decoded = jwt.verify(token, process.env.JWT_SECRET || "SECRET_PFE_2026");
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
       req.user = decoded;
 
       if (roles.length && !roles.includes(decoded.role?.toLowerCase())) {

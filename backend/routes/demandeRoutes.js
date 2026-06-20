@@ -7,7 +7,6 @@ const Dossier = require('../models/Dossier');
 const PieceDossier = require('../models/PieceDossier'); 
 const Prise = require('../models/Prise');
 
-// Upload Cloudinary
 const upload = require('../middleware/upload');
 // Middleware d'authentification
 const authMiddleware = require("../middleware/authMiddleware"); // 🔐 IMPORTANT
@@ -312,7 +311,6 @@ router.post('/upload-pec/:id', authMiddleware(["agent", "president"]), upload.si
       return res.status(400).json({ message: "Aucun fichier reçu" });
     }
 
-    // Cloudinary renvoie le lien public dans req.file.path
 demande.fichier_prise_en_charge = `uploads/ordonnances/${req.file.filename}`;
     if (req.body.note && req.body.note.trim()) {
       demande.message_admin = req.body.note.trim();

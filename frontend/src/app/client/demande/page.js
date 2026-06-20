@@ -173,10 +173,8 @@ function PECModal({ demande, onClose }) {
     ? demande.fichier_prise_en_charge
     : `http://localhost:5001/${demande.fichier_prise_en_charge.replace(/^\//, "")}`;
 
- // ✅ APRÈS — Cloudinary stocke les PDFs en /raw/ sans extension
-const isPdf =
+ const isPdf =
   url.toLowerCase().includes(".pdf") ||
-  url.toLowerCase().includes("/raw/") ||
   demande.fichier_prise_en_charge.toLowerCase().includes("pdf");
   return (
     <div

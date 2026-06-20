@@ -1,18 +1,18 @@
 // config/db.js
+require('dotenv').config();
 const { Sequelize } = require("sequelize");
 
 const sequelize = new Sequelize(
-  "databaselocal",    // nom de la base
-  "root",             // utilisateur
-  "Mezrague2026@",    // mot de passe
+  process.env.DB_NAME,
+  process.env.DB_USER,
+  process.env.DB_PASSWORD,
   {
-    host: "localhost",
-    dialect: "mysql",
+    host: process.env.DB_HOST,
+    dialect: process.env.DB_DIALECT || "mysql",
     logging: false
   }
 );
 
-// Fonction pour tester la connexion
 const connectDB = async () => {
   try {
     await sequelize.authenticate();
