@@ -43,6 +43,47 @@ function Field({ label, required, children }) {
 
 const inputCls  = "w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition placeholder-slate-400 bg-white shadow-sm";
 const selectCls = `${inputCls} cursor-pointer`;
+const inputErrCls  = "w-full border border-red-400 rounded-xl px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-red-500 focus:ring-2 focus:ring-red-500/20 transition placeholder-slate-400 bg-red-50/30 shadow-sm";
+const selectErrCls = `${inputErrCls} cursor-pointer`;
+
+// ─── VALIDATION ───────────────────────────────────────────────────────────────
+const REGEX_TEL_DZ = /^0[5-7][0-9]{8}$/;                 // ex: 0551234567 (10 chiffres)
+const REGEX_NOM    = /^[A-Za-zÀ-ÖØ-öø-ÿ\s'-]{2,50}$/;     // lettres, accents, espaces, tirets, apostrophes
+const REGEX_LIEU   = /^[A-Za-zÀ-ÖØ-öø-ÿ0-9\s'-]{2,80}$/;  // idem + chiffres (ex: "Alger 16")
+const MAX_FILE_MB  = 10;
+
+function calcAge(dateStr) {
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return null;
+  const today = new Date();
+  let age = today.getFullYear() - d.getFullYear();
+  const m = today.getMonth() - d.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < d.getDate())) age--;
+  return age;
+}
+
+function ErrorMsg({ msg }) {
+  if (!msg) return null;
+  return <p className="text-[11px] text-red-600 font-semibold mt-1">{msg}</p>;
+}
+
+// Ne garde que les chiffres, limité à 10 caractères (saisie en temps réel)
+function sanitizeTelInput(raw) {
+  return raw.replace(/[^0-9]/g, "").slice(0, 10);
+}
+
+// Message d'erreur détaillé pour un numéro de téléphone algérien
+function validateTelDZ(value) {
+  const v = value.trim();
+  if (!v) return "Le téléphone est obligatoire.";
+  if (/[^0-9]/.test(v)) return "Le numéro ne doit contenir que des chiffres.";
+  if (v.length < 10) return `Numéro incomplet (${v.length}/10 chiffres).`;
+  if (v.length > 10) return "Le numéro ne doit pas dépasser 10 chiffres.";
+  if (!/^0/.test(v)) return "Le numéro doit commencer par 0.";
+  if (!/^0[5-7]/.test(v)) return "Indicatif invalide. Le numéro doit commencer par 05, 06 ou 07.";
+  if (!REGEX_TEL_DZ.test(v)) return "Numéro invalide. Format attendu : 0[5-7]XXXXXXXX.";
+  return "";
+}
 
 // ─── ZONE UPLOAD ──────────────────────────────────────────────────────────────
 function FileUploadZone({ files, onChange }) {
@@ -329,6 +370,7 @@ export default function DemandePage() {
   const [fetchLoading, setFetchLoading]     = useState(false);
   const [submitLoading, setSubmitLoading]   = useState(false);
   const [submitMsg, setSubmitMsg]           = useState({ text: "", type: "" });
+  const [errors, setErrors]                 = useState({});
   const [selectedPieces, setSelectedPieces] = useState(null);
   const [selectedPEC, setSelectedPEC]       = useState(null); // ← nouveau
   const [captchaSvg, setCaptchaSvg]         = useState("");
@@ -365,7 +407,10 @@ export default function DemandePage() {
   const resetForm = () => {
     setPrenom(""); setNom(""); setSexe(""); setTelephone("");
     setDateNaiss(""); setLieuNaissance(""); setFonction(""); setPrestation(""); setFichiers([]);
-    setUserCaptcha(""); setSubmitMsg({ text: "", type: "" });
+    setEtablissement("");
+    setPourQui("moi"); setAyantPrenom(""); setAyantNom(""); setAyantLien("");
+    setAyantDateNaiss(""); setAyantTelephone("");
+    setUserCaptcha(""); setSubmitMsg({ text: "", type: "" }); setErrors({});
   };
 
   const fetchDemandes = async () => {
@@ -409,32 +454,99 @@ useEffect(() => {
     fetchClinics();
   }, []);
 
+  const validateForm = () => {
+    const errs = {};
+
+    // Bénéficiaire
+    if (!prenom.trim()) errs.prenom = "Le prénom est obligatoire.";
+    else if (!REGEX_NOM.test(prenom.trim())) errs.prenom = "Le prénom ne doit contenir que des lettres.";
+
+    if (!nom.trim()) errs.nom = "Le nom est obligatoire.";
+    else if (!REGEX_NOM.test(nom.trim())) errs.nom = "Le nom ne doit contenir que des lettres.";
+
+    // Téléphone (algérien strict : 0[5-7]XXXXXXXX, 10 chiffres)
+    const telErr = validateTelDZ(telephone);
+    if (telErr) errs.telephone = telErr;
+
+    // Date de naissance
+    if (!dateNaiss) errs.dateNaiss = "La date de naissance est obligatoire.";
+    else {
+      const age = calcAge(dateNaiss);
+      if (new Date(dateNaiss) > new Date()) errs.dateNaiss = "La date ne peut pas être dans le futur.";
+      else if (age === null || age < 16 || age > 100) errs.dateNaiss = "Âge invalide (doit être entre 16 et 100 ans).";
+    }
+
+    // Lieu de naissance
+    if (!lieuNaissance.trim()) errs.lieuNaissance = "Le lieu de naissance est obligatoire.";
+    else if (!REGEX_LIEU.test(lieuNaissance.trim())) errs.lieuNaissance = "Lieu de naissance invalide.";
+
+    // Prestation / établissement
+    if (!prestation) errs.prestation = "Le type de prestation est obligatoire.";
+    if (!etablissement) errs.etablissement = "L'établissement est obligatoire.";
+
+    // Fichiers
+    if (fichiers.length === 0) errs.fichiers = "Ajoutez au moins un document.";
+    else {
+      const tropLourd = fichiers.find((f) => f.size > MAX_FILE_MB * 1024 * 1024);
+      if (tropLourd) errs.fichiers = `"${tropLourd.name}" dépasse ${MAX_FILE_MB} Mo. Réduisez la taille du fichier.`;
+    }
+
+    // Captcha
+    if (!userCaptcha.trim()) errs.userCaptcha = "Veuillez saisir le code de vérification.";
+
+    // Ayant droit
+    if (pourQui === "autre") {
+      if (!ayantPrenom.trim()) errs.ayantPrenom = "Le prénom est obligatoire.";
+      else if (!REGEX_NOM.test(ayantPrenom.trim())) errs.ayantPrenom = "Lettres uniquement.";
+
+      if (!ayantNom.trim()) errs.ayantNom = "Le nom est obligatoire.";
+      else if (!REGEX_NOM.test(ayantNom.trim())) errs.ayantNom = "Lettres uniquement.";
+
+      if (!ayantLien) errs.ayantLien = "Le lien de parenté est obligatoire.";
+
+      if (!ayantDateNaiss) errs.ayantDateNaiss = "La date de naissance est obligatoire.";
+      else if (new Date(ayantDateNaiss) > new Date()) errs.ayantDateNaiss = "La date ne peut pas être dans le futur.";
+
+      if (!ayantTelephone.trim()) errs.ayantTelephone = "Le téléphone est obligatoire.";
+      else {
+        const ayantTelErr = validateTelDZ(ayantTelephone);
+        if (ayantTelErr) errs.ayantTelephone = ayantTelErr;
+      }
+    }
+
+    return errs;
+  };
+
   const handleSubmit = async () => {
-    if (!prenom.trim() || !nom.trim() || !prestation || fichiers.length === 0) {
-      setSubmitMsg({ text: "⚠️ Remplis tous les champs obligatoires et ajoute au moins un fichier.", type: "error" });
+    const errs = validateForm();
+    setErrors(errs);
+
+    if (Object.keys(errs).length > 0) {
+      setSubmitMsg({ text: "⚠️ Merci de corriger les champs en rouge avant de soumettre.", type: "error" });
       return;
     }
+
     setSubmitLoading(true);
     setSubmitMsg({ text: "", type: "" });
     const fd = new FormData();
-    fd.append("nom_beneficiaire", `${prenom} ${nom}`);
+    fd.append("nom_beneficiaire", `${prenom.trim()} ${nom.trim()}`);
     fd.append("type_prestation", prestation);
     fd.append("fonction", fonction || "Personnel");
     fd.append("sexe", sexe);
-    fd.append("telephone", telephone);
+    fd.append("telephone", telephone.trim());
     fd.append("date_naissance", dateNaiss);
-    fd.append("lieu_naissance", lieuNaissance);
+    fd.append("lieu_naissance", lieuNaissance.trim());
     fd.append("etablissement", etablissement);
     fd.append("captcha", userCaptcha);
     fichiers.forEach((f) => fd.append("ordonnance", f));
     fd.append("pour_qui", pourQui);
-if (pourQui === "autre") {
-  fd.append("ayant_prenom",     ayantPrenom);
-  fd.append("ayant_nom",        ayantNom);
-  fd.append("ayant_lien",       ayantLien);
-  fd.append("ayant_date_naiss", ayantDateNaiss);
-  fd.append("ayant_telephone",  ayantTelephone);
-}
+    if (pourQui === "autre") {
+      fd.append("ayant_prenom",     ayantPrenom.trim());
+      fd.append("ayant_nom",        ayantNom.trim());
+      fd.append("ayant_lien",       ayantLien);
+      fd.append("ayant_date_naiss", ayantDateNaiss);
+      fd.append("ayant_telephone",  ayantTelephone.trim());
+    }
     try {
       await apiFetch("/demandes/ajouter", { method: "POST", body: fd });
       setSubmitMsg({ text: "✅ Dossier envoyé avec succès !", type: "success" });
@@ -516,17 +628,48 @@ if (pourQui === "autre") {
               <div className="px-4 sm:px-8 py-4 border-b border-slate-100 bg-amber-50/40">
                 <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest mb-3">Informations de l'ayant droit</p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <input type="text" placeholder="Prénom *" value={ayantPrenom} onChange={e => setAyantPrenom(e.target.value)} className={inputCls} />
-                  <input type="text" placeholder="Nom *"    value={ayantNom}    onChange={e => setAyantNom(e.target.value)}    className={inputCls} />
-                  <select value={ayantLien} onChange={e => setAyantLien(e.target.value)} className={selectCls}>
-                    <option value="">Lien de parenté *</option>
-                    <option>Conjoint(e)</option>
-                    <option>Enfant</option>
-                    <option>Père / Mère</option>
-                    <option>Autre</option>
-                  </select>
-                  <input type="date" value={ayantDateNaiss} onChange={e => setAyantDateNaiss(e.target.value)} className={inputCls} />
-                  <input type="tel" placeholder="Téléphone *" value={ayantTelephone} onChange={e => setAyantTelephone(e.target.value)} className={inputCls + " sm:col-span-2"} />
+                  <div>
+                    <input type="text" placeholder="Prénom *" value={ayantPrenom} onChange={e => setAyantPrenom(e.target.value)} className={errors.ayantPrenom ? inputErrCls : inputCls} />
+                    <ErrorMsg msg={errors.ayantPrenom} />
+                  </div>
+                  <div>
+                    <input type="text" placeholder="Nom *"    value={ayantNom}    onChange={e => setAyantNom(e.target.value)}    className={errors.ayantNom ? inputErrCls : inputCls} />
+                    <ErrorMsg msg={errors.ayantNom} />
+                  </div>
+                  <div>
+                    <select value={ayantLien} onChange={e => setAyantLien(e.target.value)} className={errors.ayantLien ? selectErrCls : selectCls}>
+                      <option value="">Lien de parenté *</option>
+                      <option>Conjoint(e)</option>
+                      <option>Enfant</option>
+                      <option>Père / Mère</option>
+                      <option>Autre</option>
+                    </select>
+                    <ErrorMsg msg={errors.ayantLien} />
+                  </div>
+                  <div>
+                    <input type="date" value={ayantDateNaiss} onChange={e => setAyantDateNaiss(e.target.value)} className={errors.ayantDateNaiss ? inputErrCls : inputCls} />
+                    <ErrorMsg msg={errors.ayantDateNaiss} />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <input
+                      type="tel"
+                      inputMode="numeric"
+                      placeholder="Téléphone *"
+                      value={ayantTelephone}
+                      onChange={(e) => {
+                        const cleaned = sanitizeTelInput(e.target.value);
+                        setAyantTelephone(cleaned);
+                        setErrors((prev) => ({ ...prev, ayantTelephone: validateTelDZ(cleaned) || undefined }));
+                      }}
+                      onKeyDown={(e) => {
+                        if (["Backspace","Delete","ArrowLeft","ArrowRight","Tab"].includes(e.key)) return;
+                        if (!/^[0-9]$/.test(e.key)) e.preventDefault();
+                      }}
+                      maxLength={10}
+                      className={errors.ayantTelephone ? inputErrCls : inputCls}
+                    />
+                    <ErrorMsg msg={errors.ayantTelephone} />
+                  </div>
                 </div>
               </div>
             )}
@@ -549,8 +692,14 @@ if (pourQui === "autre") {
             <div className="px-4 sm:px-8 py-2">
               <Field label="Nom du Bénéficiaire" required>
                 <div className="flex flex-col sm:flex-row gap-2">
-                  <input type="text" value={prenom} onChange={(e) => setPrenom(e.target.value)} placeholder="Prénom" className={inputCls} />
-                  <input type="text" value={nom}    onChange={(e) => setNom(e.target.value)}    placeholder="Nom"    className={inputCls} />
+                  <div className="flex-1">
+                    <input type="text" value={prenom} onChange={(e) => setPrenom(e.target.value)} placeholder="Prénom" className={errors.prenom ? inputErrCls : inputCls} />
+                    <ErrorMsg msg={errors.prenom} />
+                  </div>
+                  <div className="flex-1">
+                    <input type="text" value={nom}    onChange={(e) => setNom(e.target.value)}    placeholder="Nom"    className={errors.nom ? inputErrCls : inputCls} />
+                    <ErrorMsg msg={errors.nom} />
+                  </div>
                 </div>
               </Field>
               <Field label="Sexe">
@@ -560,13 +709,32 @@ if (pourQui === "autre") {
                 </select>
               </Field>
               <Field label="Téléphone" required>
-                <input type="tel" value={telephone} onChange={(e) => setTelephone(e.target.value)} placeholder="0X XX XX XX XX" className={inputCls} />
+                <input
+                  type="tel"
+                  inputMode="numeric"
+                  value={telephone}
+                  onChange={(e) => {
+                    const cleaned = sanitizeTelInput(e.target.value);
+                    setTelephone(cleaned);
+                    setErrors((prev) => ({ ...prev, telephone: validateTelDZ(cleaned) || undefined }));
+                  }}
+                  onKeyDown={(e) => {
+                    if (["Backspace","Delete","ArrowLeft","ArrowRight","Tab"].includes(e.key)) return;
+                    if (!/^[0-9]$/.test(e.key)) e.preventDefault();
+                  }}
+                  placeholder="0X XX XX XX XX"
+                  maxLength={10}
+                  className={errors.telephone ? inputErrCls : inputCls}
+                />
+                <ErrorMsg msg={errors.telephone} />
               </Field>
               <Field label="Date de Naissance" required>
-                <input type="date" value={dateNaiss} onChange={(e) => setDateNaiss(e.target.value)} className={inputCls} />
+                <input type="date" value={dateNaiss} onChange={(e) => setDateNaiss(e.target.value)} className={errors.dateNaiss ? inputErrCls : inputCls} />
+                <ErrorMsg msg={errors.dateNaiss} />
               </Field>
               <Field label="Lieu de Naissance" required>
-                <input type="text" placeholder="Lieu de naissance" value={lieuNaissance} onChange={(e) => setLieuNaissance(e.target.value)} className={inputCls} />
+                <input type="text" placeholder="Lieu de naissance" value={lieuNaissance} onChange={(e) => setLieuNaissance(e.target.value)} className={errors.lieuNaissance ? inputErrCls : inputCls} />
+                <ErrorMsg msg={errors.lieuNaissance} />
               </Field>
               <Field label="Fonction">
                 <select value={fonction} onChange={(e) => setFonction(e.target.value)} className={selectCls}>
@@ -575,24 +743,27 @@ if (pourQui === "autre") {
                 </select>
               </Field>
               <Field label="Type de Prestation" required>
-                <select value={prestation} onChange={(e) => setPrestation(e.target.value)} className={selectCls}>
+                <select value={prestation} onChange={(e) => setPrestation(e.target.value)} className={errors.prestation ? selectErrCls : selectCls}>
                   <option value="">Sélectionner...</option>
                   {typesPrestations.map((p) => (
                     <option key={p.id} value={p.nom}>{p.nom}</option>
                   ))}
                 </select>
+                <ErrorMsg msg={errors.prestation} />
               </Field>
               <Field label="Établissement" required>
-                <select value={etablissement} onChange={(e) => setEtablissement(e.target.value)} className={selectCls}>
+                <select value={etablissement} onChange={(e) => setEtablissement(e.target.value)} className={errors.etablissement ? selectErrCls : selectCls}>
                   <option value="">Choisir un établissement...</option>
                   {listeCliniques.map((c) => (
                     <option key={c.id} value={c.nom}>{c.nom}</option>
                   ))}
                 </select>
+                <ErrorMsg msg={errors.etablissement} />
               </Field>
               <Field label="Documents" required>
                 <FileUploadZone files={fichiers} onChange={setFichiers} />
-                <p className="text-[11px] text-slate-400 mt-2">Ordonnance, résultats d'analyses, devis, etc.</p>
+                <ErrorMsg msg={errors.fichiers} />
+                <p className="text-[11px] text-slate-400 mt-2">Ordonnance, résultats d'analyses, devis, etc. (Max {MAX_FILE_MB} Mo / fichier)</p>
               </Field>
             </div>
 
@@ -610,10 +781,11 @@ if (pourQui === "autre") {
                   <input
                     type="text"
                     placeholder="Entrez le code ci-dessus"
-                    className={inputCls}
+                    className={errors.userCaptcha ? inputErrCls : inputCls}
                     value={userCaptcha}
                     onChange={(e) => setUserCaptcha(e.target.value)}
                   />
+                  <ErrorMsg msg={errors.userCaptcha} />
                   <p className="text-[10px] text-slate-400">Cliquez sur l'image pour en générer un nouveau.</p>
                 </div>
               </div>

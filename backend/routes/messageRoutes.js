@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 const Message = require("../models/Message");
 const User = require("../models/User");
-const { upload } = require("../config/cloudinary");
+const upload = require('../middleware/upload');
 const authMiddleware = require("../middleware/authMiddleware");
 
 // 🟢 GET MESSAGES — accessible par tous les connectés
@@ -35,17 +35,31 @@ include: [
 });
 
 // 🟢 POST MESSAGE — accessible par tous les connectés
-router.post("/", authMiddleware(["agent", "beneficiaire", "president"]), upload.single("image"), async (req, res) => {
-  const { receiverId, content, contentForSender } = req.body; // ← ajouter contentForSender
-
+const Fichier = require("../models/Fichier");
+// 🟢 POST MESSAGE
+router.post("/", authMiddleware(["agent", "beneficiaire", "president"]), upload.single("image"), async (req, res) => {  const { receiverId, content, contentForSender } = req.body;
   try {
     const message = await Message.create({
       senderId: req.user.id,
       receiverId: receiverId || 2,
       content: content || "",
-      contentForSender: contentForSender || null, // ← sauvegarder
-      image: req.file?.path || null,
+      contentForSender: contentForSender || null,
     });
+
+    // ✅ Si une image a été envoyée, on la stocke en BDD via Fichier
+    let fichierId = null;
+    if (req.file) {
+      const fichier = await Fichier.create({
+        nom_original: req.file.originalname,
+        data: req.file.buffer.toString("base64"),
+        mime_type: req.file.mimetype,
+        taille: req.file.size,
+        entite_type: "message",
+        entite_id: message.id,
+      });
+      fichierId = fichier.id;
+      await message.update({ image: fichierId }); // on stocke l'id du fichier dans la colonne "image"
+    }
 
     const messageComplet = await Message.findByPk(message.id, {
       include: [
@@ -55,7 +69,10 @@ router.post("/", authMiddleware(["agent", "beneficiaire", "president"]), upload.
 
     const io = req.app.get("io");
     if (io) {
-      io.emit("receive_message", messageComplet); // ← messageComplet contient déjà contentForSender
+      const senderId   = String(req.user.id);
+      const receiverIdStr = String(message.receiverId);
+      io.to(`user:${senderId}`).emit("receive_message", messageComplet);
+      io.to(`user:${receiverIdStr}`).emit("receive_message", messageComplet);
     }
 
     res.status(201).json(messageComplet);

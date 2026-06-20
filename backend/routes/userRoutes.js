@@ -3,7 +3,7 @@ const router = express.Router();
 const User = require("../models/User");
 const Prise = require("../models/Prise");
 const bcrypt = require("bcryptjs");
-const { upload } = require("../config/cloudinary");
+const upload = require("../middleware/upload");
 const { Op, fn, col } = require("sequelize");
 const authMiddleware = require("../middleware/authMiddleware");
 const jwt = require("jsonwebtoken");
@@ -131,8 +131,10 @@ router.post("/register", authMiddleware(["agent", "president"]), upload.single("
       password: hashedPassword,
       positionAdministrative: positionAdministrative || "En activité",
       categorieRole: categorieRole || "Enseignant",
-      photo: photoUrl,
-      ayantDroits: parsedAyantDroits,
+photo: req.file
+    ? `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`
+    : null,
+    ayantDroits: parsedAyantDroits,
       roleSystem: roleSystem || "beneficiaire",
       firstLogin: true
     });
@@ -218,9 +220,8 @@ router.put("/:id", authMiddleware(["agent", "president","secretariat","comptable
     const updateData = { ...req.body };
 
     if (req.file) {
-      updateData.photo = req.file.path;
-    }
-
+  updateData.photo = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
+}
     if (updateData.ayantDroits) {
       try {
         if (typeof updateData.ayantDroits === 'string') {
@@ -368,7 +369,46 @@ router.post("/public-key", authMiddleware(["agent", "beneficiaire", "secretariat
     res.status(500).json({ message: "Erreur serveur." });
   }
 });
+router.get("/public-key/agent", authMiddleware(["beneficiaire"]), async (req, res) => {
+  try {
+    const beneficiaire = await User.findByPk(req.user.id);
+    if (!beneficiaire) {
+      return res.status(404).json({ message: "Utilisateur introuvable" });
+    }
 
+    let agent;
+
+    // Si un agent est déjà assigné, on le réutilise
+    if (beneficiaire.assignedAgentId) {
+      agent = await User.findOne({
+        where: { id: beneficiaire.assignedAgentId, roleSystem: "agent" },
+        attributes: ["id", "publicKey"],
+      });
+    }
+
+    // Sinon, on assigne un agent disponible (le premier avec une clé valide)
+    if (!agent) {
+      agent = await User.findOne({
+        where: { roleSystem: "agent", publicKey: { [Op.ne]: null } },
+        order: [["id", "ASC"]],
+        attributes: ["id", "publicKey"],
+      });
+
+      if (agent) {
+        await beneficiaire.update({ assignedAgentId: agent.id });
+      }
+    }
+
+    if (!agent || !agent.publicKey) {
+      return res.status(404).json({ message: "Aucun agent disponible avec une clé valide" });
+    }
+
+    res.json({ adminId: agent.id, publicKey: agent.publicKey });
+  } catch (err) {
+    console.error("❌ GET public-key/agent error:", err);
+    res.status(500).json({ message: "Erreur serveur" });
+  }
+});
 // ✅ GET — récupérer la clé publique + générer si absente
 router.get('/public-key/:id', async (req, res) => {
   const userId = req.params.id;
@@ -393,26 +433,14 @@ router.get('/public-key/:id', async (req, res) => {
     res.status(500).json({ message: 'Erreur serveur.' });
   }
 });
+// 🟢 GET la clé publique d'un agent disponible
+// Utilisée par le bénéficiaire pour chiffrer ses messages vers l'admin
+
 router.post("/logout", (req, res) => {
   res.clearCookie("refreshToken", { httpOnly: true, sameSite: "strict" });
   res.json({ message: "Déconnecté avec succès" });
 });
 // routes/users.js
-router.get("/admin-key", async (req, res) => {
-  try {
-    // Trouver un utilisateur admin/agent disponible
-    const admin = await User.findOne({
-      where: { role: ["president", "agent", "beneficiaire"] }, // adapte selon tes rôles
-    });
 
-    if (!admin) return res.status(404).json({ message: "Aucun admin trouvé" });
 
-    res.json({
-      adminId: admin.id,
-      publicKey: admin.publicKey, // ✅ retourner la clé publique
-    });
-  } catch (e) {
-    res.status(500).json({ message: "Erreur serveur" });
-  }
-});
 module.exports = router;

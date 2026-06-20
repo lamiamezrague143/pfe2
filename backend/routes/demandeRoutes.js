@@ -1,40 +1,28 @@
 const express = require('express');
 const router = express.Router();
 const { sequelize } = require('../config/db');
-
+const { Op } = require('sequelize');
 const Demande = require('../models/Demande');
 const Dossier = require('../models/Dossier'); 
 const PieceDossier = require('../models/PieceDossier'); 
 const Prise = require('../models/Prise');
 
 // Upload Cloudinary
-const { upload } = require('../config/cloudinary');
-
+const upload = require('../middleware/upload');
 // Middleware d'authentification
 const authMiddleware = require("../middleware/authMiddleware"); // 🔐 IMPORTANT
 
 // ─────────────────────────────
 // 1. AJOUT DEMANDE (CLIENT / BÉNÉFICIAIRE)
 // ─────────────────────────────
-router.post('/ajouter', authMiddleware(["beneficiaire","agent","president"]),upload.array('ordonnance', 10), async (req, res) => {
+const Fichier = require('../models/Fichier');
+router.post('/ajouter', authMiddleware(["beneficiaire","agent","president"]), upload.array('ordonnance', 10), async (req, res) => {
   try {
-    const { nom_beneficiaire, type_prestation, fonction, sexe, telephone, date_naissance, lieu_naissance, etablissement } = req.body;
+    const { nom_beneficiaire, type_prestation, fonction, sexe, telephone, date_naissance, lieu_naissance, etablissement, pour_qui, ayant_prenom, ayant_nom, ayant_lien, ayant_date_naiss, ayant_telephone } = req.body;
 
-    console.log("BODY:", req.body);
-    console.log("FILES:", req.files);
-
-    let piecesData = [];
-
-    if (req.files && req.files.length > 0) {
-      piecesData = req.files.map(file => ({
-        nom: file.originalname,
-        type: file.mimetype,
-        data: file.path
-      }));
-    }
-
+    // 1. Créer la demande d'abord
     const nouvelleDemande = await Demande.create({
-      userId: req.user.id, // ⚠️ remplace par l'utilisateur connecté (bénéficiaire)
+      userId: req.user.id,
       nom_beneficiaire,
       type_prestation,
       fonction,
@@ -43,27 +31,38 @@ router.post('/ajouter', authMiddleware(["beneficiaire","agent","president"]),upl
       date_naissance,
       lieu_naissance,
       etablissement,
-      pieces: piecesData,
       statut: "En attente",
-      pour_qui: pour_qui || "moi",                    // ← ajouter
-  ayant_prenom:     ayant_prenom || null,         // ← ajouter
-  ayant_nom:        ayant_nom || null,
-  ayant_lien:       ayant_lien || null,
-  ayant_date_naiss: ayant_date_naiss || null,
-  ayant_telephone:  ayant_telephone || null,
+      pour_qui: pour_qui || "moi",
+      ayant_prenom: ayant_prenom || null,
+      ayant_nom: ayant_nom || null,
+      ayant_lien: ayant_lien || null,
+      ayant_date_naiss: ayant_date_naiss || null,
+      ayant_telephone: ayant_telephone || null,
     });
+
+ // 2. Sauvegarder les fichiers dans la table fichiers
+    if (req.files && req.files.length > 0) {
+      const fichiersData = req.files.map(file => ({
+        nom_original: file.originalname,
+        nom_stockage: null,
+        chemin: null,
+        data: file.buffer.toString('base64'),
+        mime_type: file.mimetype,
+        taille: file.size,
+        entite_type: 'prise_en_charge',
+        entite_id: nouvelleDemande.id
+      }));
+
+      await Fichier.bulkCreate(fichiersData);
+    }
 
     res.status(201).json(nouvelleDemande);
 
   } catch (err) {
     console.error("❌ ERREUR:", err);
-    res.status(500).json({
-      message: "Erreur enregistrement BDD",
-      error: err.message
-    });
+    res.status(500).json({ message: "Erreur enregistrement BDD", error: err.message });
   }
 });
-
 // ─────────────────────────────
 // 2. VALIDER DEMANDE (AGENT)
 // ─────────────────────────────
@@ -156,9 +155,6 @@ const num_sequence = `${year}-${nextNum.toString().padStart(3, '0')}`;
 // ─────────────────────────────
 // 3. LISTE DEMANDES (AGENT)
 // ─────────────────────────────
-// ─────────────────────────────
-// 3. LISTE DEMANDES
-// ─────────────────────────────
 router.get('/', authMiddleware(["agent", "beneficiaire", "president"]), async (req, res) => {
   try {
     const isAgent = req.user.role === "agent" || req.user.role === "president";
@@ -166,13 +162,37 @@ router.get('/', authMiddleware(["agent", "beneficiaire", "president"]), async (r
     const demandes = await Demande.findAll({
       where: isAgent ? {} : { userId: req.user.id },
       order: [['createdAt', 'DESC']]
-      // ← pas d'attributes, renvoie tout
     });
 
-    res.json(demandes);
+    const demandeIds = demandes.map(d => d.id);
+    const fichiers = await Fichier.findAll({
+      where: {
+        entite_type: 'prise_en_charge',
+        entite_id: { [Op.in]: demandeIds }
+      }
+    });
+
+    const fichiersParDemande = {};
+    fichiers.forEach(f => {
+      if (!fichiersParDemande[f.entite_id]) fichiersParDemande[f.entite_id] = [];
+      fichiersParDemande[f.entite_id].push({
+        id: f.id,
+        nom: f.nom_original,
+        type: f.mime_type,
+        data: `data:${f.mime_type};base64,${f.data}`
+      });
+    });
+
+    const result = demandes.map(d => {
+      const json = d.toJSON();
+      json.pieces = fichiersParDemande[d.id] || [];
+      return json;
+    });
+
+    res.json(result);
 
   } catch (err) {
-    console.error("🔥 ERREUR GET DEMANDES:", err.message); // ← regarde ici
+    console.error("🔥 ERREUR GET DEMANDES:", err.message);
     res.status(500).json({ message: "Erreur récupération", error: err.message });
   }
 });
@@ -293,8 +313,7 @@ router.post('/upload-pec/:id', authMiddleware(["agent", "president"]), upload.si
     }
 
     // Cloudinary renvoie le lien public dans req.file.path
-    demande.fichier_prise_en_charge = req.file.path;
-
+demande.fichier_prise_en_charge = `uploads/ordonnances/${req.file.filename}`;
     if (req.body.note && req.body.note.trim()) {
       demande.message_admin = req.body.note.trim();
     }

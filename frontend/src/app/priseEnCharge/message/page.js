@@ -34,14 +34,22 @@ const bufToBase64 = (buf) =>
 
 const base64ToBuf = (b64) =>
   Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)).buffer;
-
+// Remplacer generateRSAKeyPair() dans ChatPanel.jsx
 const generateRSAKeyPair = () =>
   window.crypto.subtle.generateKey(
-    { name: "RSA-OAEP", modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" },
-    true,
+    { name: "RSA-OAEP", modulusLength: 2048,
+      publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" },
+    false,   // ← extractable FALSE : la clé privée ne peut plus être exportée ni volée
     ["encrypt", "decrypt"]
   );
 
+// Stocker la clé dans IndexedDB (pas localStorage)
+const saveKeyToIDB = async (key, name) => {
+  const db = await openDB();  // ouvrir IndexedDB
+  const tx = db.transaction("keys", "readwrite");
+  tx.objectStore("keys").put({ id: name, key });
+  await tx.done;
+};
 const exportPublicKey = async (publicKey) => {
   const exported = await window.crypto.subtle.exportKey("spki", publicKey);
   return bufToBase64(exported);
@@ -133,7 +141,15 @@ const decryptMessage = async (ciphertextJSON, privateKey) => {
 // PERSISTENCE DES CLÉS (localStorage)
 // ─────────────────────────────────────────────
 
-const getOrGenerateKeyPair = async () => {
+// ─────────────────────────────────────────────
+// PERSISTENCE DES CLÉS (localStorage)
+// ─────────────────────────────────────────────
+
+// ─────────────────────────────────────────────
+// PERSISTENCE DES CLÉS (localStorage)
+// ─────────────────────────────────────────────
+
+const getOrGenerateAdminKeyPair = async () => {
   const storedPriv = localStorage.getItem("admin_rsa_private_key");
   const storedPub  = localStorage.getItem("admin_rsa_public_key");
 
@@ -143,20 +159,30 @@ const getOrGenerateKeyPair = async () => {
     return { privateKey, publicKey, publicKeyB64: storedPub };
   }
 
-  const keyPair       = await generateRSAKeyPair();
+  const keyPair = await window.crypto.subtle.generateKey(
+    { name: "RSA-OAEP", modulusLength: 2048,
+      publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" },
+    true,
+    ["encrypt", "decrypt"]
+  );
+
   const publicKeyB64  = await exportPublicKey(keyPair.publicKey);
   const privateKeyB64 = await exportPrivateKey(keyPair.privateKey);
 
   localStorage.setItem("admin_rsa_public_key",  publicKeyB64);
   localStorage.setItem("admin_rsa_private_key", privateKeyB64);
 
-  return { privateKey: keyPair.privateKey, publicKey: keyPair.publicKey, publicKeyB64 };
+  try {
+    await apiFetch("/users/public-key", {
+      method: "POST",
+      body: JSON.stringify({ publicKey: publicKeyB64 }),
+    });
+  } catch (e) {
+    console.warn("[E2EE] Impossible d'enregistrer la clé publique :", e);
+  }
+
+  return { privateKey: keyPair.privateKey, publicKey: keyPair.publicKey };
 };
-
-// ─────────────────────────────────────────────
-// COMPOSANT PRINCIPAL
-// ─────────────────────────────────────────────
-
 export default function AdminMessagesPage() {
   const [conversations, setConversations] = useState([]);
   const [selectedUser, setSelectedUser]   = useState(null);
@@ -178,39 +204,25 @@ export default function AdminMessagesPage() {
   const currentUserIdRef  = useRef(null); // ✅ pour les callbacks async
 
   // ── 1. Clés RSA + lecture ID depuis token ──
-  useEffect(() => {
-    (async () => {
-      const { privateKey, publicKey, publicKeyB64 } = await getOrGenerateKeyPair();
+useEffect(() => {
+  (async () => {
+const { privateKey, publicKey } = await getOrGenerateAdminKeyPair();    privateKeyRef.current = privateKey;
+    publicKeyRef.current  = publicKey;
 
-      privateKeyRef.current = privateKey;
-      publicKeyRef.current  = publicKey;
-
-      // ✅ Lire l'ID depuis le token JWT
-      try {
-        const token = localStorage.getItem("token");
-        if (token) {
-          const payload = JSON.parse(atob(token.split(".")[1]));
-          setCurrentUserId(payload.id);
-          currentUserIdRef.current = payload.id; // ✅ disponible immédiatement dans les callbacks
-        }
-      } catch (e) {
-        console.warn("Token invalide", e);
+    try {
+      const token = localStorage.getItem("token");
+      if (token) {
+        const payload = JSON.parse(atob(token.split(".")[1]));
+        setCurrentUserId(payload.id);
+        currentUserIdRef.current = payload.id;
       }
+    } catch (e) {
+      console.warn("Token invalide", e);
+    }
 
-      // Enregistrer la clé publique sur le serveur
-      try {
-        await apiFetch("/users/public-key", {
-          method: "POST",
-          body: JSON.stringify({ publicKey: publicKeyB64 }),
-        });
-      } catch (e) {
-        console.warn("[E2EE] Impossible d'enregistrer la clé publique :", e);
-      }
-
-      setE2eeReady(true);
-    })();
-  }, []);
-
+    setE2eeReady(true);
+  })();
+}, []);
   useEffect(() => { selectedUserRef.current = selectedUser; }, [selectedUser]);
 
   // ── 2. Socket ──
@@ -427,17 +439,6 @@ export default function AdminMessagesPage() {
     }
   };
 
-  // ── deleteMessage ──
-  const deleteMessage = async (msgId) => {
-    setDeletingId(msgId);
-    try {
-      await apiFetch(`/messages/${msgId}`, { method: "DELETE" });
-      setMessages((prev) => prev.filter((m) => m.id !== msgId));
-      setConfirmDelete(null);
-      await fetchConversations();
-    } catch (e) { console.error("Erreur suppression:", e); }
-    finally { setDeletingId(null); }
-  };
 
   const filteredConvs = conversations.filter((c) =>
     c.name.toLowerCase().includes(search.toLowerCase())
@@ -605,7 +606,7 @@ export default function AdminMessagesPage() {
                           >
                             <p className="leading-relaxed font-medium">{msg.content}</p>
                             {msg.image && (
-                              <img src={msg.image} alt="Attachement"
+                              <img src={`http://localhost:5001/api/pieces/${msg.image}/raw`} alt="pièce jointe" alt="Attachement"
                                 className="mt-2 rounded-xl max-w-full h-auto border border-slate-100"
                                 onError={(e) => (e.target.style.display = "none")} />
                             )}
@@ -615,37 +616,7 @@ export default function AdminMessagesPage() {
                             </span>
                           </div>
 
-                          {msg.id && (
-                            <div className={`mt-1 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity ${isAdmin ? "justify-end" : "justify-start"}`}>
-                              {isConfirming ? (
-                                <>
-                                  <span className="text-[10px] text-red-500 font-black">Supprimer ?</span>
-                                  <button
-                                    onClick={() => deleteMessage(msg.id)}
-                                    disabled={isDeleting}
-                                    className="text-[10px] bg-red-500 text-white px-2 py-0.5 rounded-full font-black hover:bg-red-600 disabled:opacity-50 transition-colors"
-                                  >
-                                    {isDeleting ? "..." : "Oui"}
-                                  </button>
-                                  <button
-                                    onClick={() => setConfirmDelete(null)}
-                                    className="text-[10px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full font-black hover:bg-slate-300 transition-colors"
-                                  >
-                                    Non
-                                  </button>
-                                </>
-                              ) : (
-                                <button
-                                  onClick={() => setConfirmDelete(msg.id)}
-                                  className="flex items-center gap-1 text-[10px] text-slate-400 hover:text-red-500 transition-colors"
-                                  title="Supprimer ce message"
-                                >
-                                  <Trash2 size={11} />
-                                  <span className="font-bold">Supprimer</span>
-                                </button>
-                              )}
-                            </div>
-                          )}
+                         
                         </div>
                       </div>
                     );

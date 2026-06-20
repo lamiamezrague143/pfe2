@@ -7,6 +7,7 @@ const http = require("http");
 const helmet = require("helmet");
 const { Server } = require("socket.io");
 const app = express();
+const jwt = require("jsonwebtoken");
 app.use(helmet()); // ← AJOUTE
 require("./models/association");
 // ✅ AJOUT IMPORTANT ICI
@@ -51,7 +52,7 @@ const typesprestations = require('./routes/typesprestationsRoutes')
 // Vérifie que tu as bien ça dans app.js
 const authRoutes = require('./routes/authRoutes');
 
-
+const fichierRoutes = require('./routes/fichierRoutes')
 const statutDossierRoutes = require('./routes/statutDossierRoutes');
 
 //const loginRoutes = require("./routes/loginRoutes");
@@ -100,6 +101,7 @@ app.use("/api/messages", messageRoutes);
 app.use("/api/agents", agentRoutes);
 app.use("/api/notes", noteRoutes);
 app.use('/api/archives', archiveRoutes);
+app.use("/api/fichiers",fichierRoutes);
 //app.use("/api", loginRoutes);
 app.use("/api/prix-prestations", prixPrestationsRoutes);
 app.use('/api/statut-dossiers', statutDossierRoutes);
@@ -162,6 +164,17 @@ io.on("connection", (socket) => {
   socket.on("disconnect", () => {
     console.log("❌ Client déconnecté :", socket.id);
   });
+});
+io.on("connection", (socket) => {
+  const token = socket.handshake.auth?.token;
+  if (token) {
+    try {
+      const payload = jwt.verify(token, process.env.JWT_SECRET);
+      socket.join(`user:${payload.id}`);
+    } catch (e) {
+      socket.disconnect();
+    }
+  }
 });
 // --- DÉMARRAGE SÉCURISÉ ---
 const PORT = process.env.PORT || 5001;

@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { upload } = require('../config/cloudinary');
+const upload = require('../middleware/upload');
 const Archive = require('../models/Archive');
 const { Op } = require('sequelize');
 const authMiddleware = require("../middleware/authMiddleware"); // 🔐 IMPORTANT
@@ -11,14 +11,12 @@ router.post('/upload', authMiddleware(["president"]), upload.array('files'), asy
     if (!req.files || req.files.length === 0) {
       return res.status(400).json({ message: "Aucun fichier reçu" });
     }
-
-    const fichiers = req.files.map(file => ({
-      nom: file.originalname,
-      url: file.path,
-      type: file.mimetype,
-      taille: file.size
-    }));
-
+const fichiers = req.files.map(file => ({
+  nom: file.originalname,
+  url: `uploads/${file.filename}`,
+  type: file.mimetype,
+  taille: file.size
+}));
     const archive = await Archive.create({
       nomDossier: req.body.nomDossier,
       fichiers

@@ -16,12 +16,22 @@ function getCurrentUserFromToken() {
 
 const bufToBase64 = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf)));
 const base64ToBuf = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)).buffer;
-
+// ChatPanel.jsx — extractable DOIT être true ici
 const generateRSAKeyPair = () =>
   window.crypto.subtle.generateKey(
-    { name: "RSA-OAEP", modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" },
-    true, ["encrypt", "decrypt"]
+    { name: "RSA-OAEP", modulusLength: 2048,
+      publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" },
+    true,          // ← true obligatoire pour pouvoir sauvegarder en localStorage
+    ["encrypt", "decrypt"]
   );
+
+// Stocker la clé dans IndexedDB (pas localStorage)
+const saveKeyToIDB = async (key, name) => {
+  const db = await openDB();  // ouvrir IndexedDB
+  const tx = db.transaction("keys", "readwrite");
+  tx.objectStore("keys").put({ id: name, key });
+  await tx.done;
+};
 
 const exportPublicKey = async (publicKey) => {
   const exported = await window.crypto.subtle.exportKey("spki", publicKey);
@@ -118,7 +128,7 @@ export default function ChatPanel() {
   const [currentUser, setCurrentUser] = useState(null);
   const [e2eeReady, setE2eeReady]     = useState(false);
   const [receiverId, setReceiverId]   = useState(null);
-
+const myPublicKeyRef = useRef(null);
   const fileInputRef  = useRef(null);
   const socketRef     = useRef(null);
   const scrollRef     = useRef(null);
@@ -131,9 +141,9 @@ export default function ChatPanel() {
 
     (async () => {
       // ✅ Clés persistées du bénéficiaire
-      const { privateKey, publicKeyB64 } = await getOrGenerateKeyPair();
-      privateKeyRef.current = privateKey;
-
+const { privateKey, publicKey, publicKeyB64 } = await getOrGenerateKeyPair();
+privateKeyRef.current  = privateKey;
+myPublicKeyRef.current = publicKey;
       // Enregistrer la clé publique sur le serveur
       try {
         await apiFetch("/users/public-key", {
@@ -145,25 +155,19 @@ export default function ChatPanel() {
       }
 
       // ✅ Récupérer la clé publique système
-      try {
-        const res = await fetch("http://localhost:5001/api/users/system-key");
-        const keyData = await res.json();
-        if (keyData?.publicKey) {
-          systemKeyRef.current = await importPublicKey(keyData.publicKey);
-          console.log("✅ Clé système chargée");
-        }
-      } catch (e) {
-        console.warn("[E2EE] Clé système introuvable :", e);
-      }
-
-      // ✅ Récupérer l'ID d'un agent disponible
-      try {
-        const res = await fetch("http://localhost:5001/api/users/admin-key");
-        const data = await res.json();
-        if (data?.adminId) setReceiverId(data.adminId);
-      } catch (e) {
-        console.warn("[E2EE] Agent introuvable :", e);
-      }
+     // ✅ Une seule route : clé publique de l'agent + son ID
+try {
+  const res = await apiFetch("/users/public-key/agent");
+  if (res?.publicKey) {
+    systemKeyRef.current = await importPublicKey(res.publicKey);
+    console.log("✅ Clé publique de l'agent chargée");
+  }
+  if (res?.adminId) {
+    setReceiverId(res.adminId);
+  }
+} catch (e) {
+  console.warn("[E2EE] Clé publique de l'agent introuvable :", e);
+}
 
       setE2eeReady(true);
     })();
@@ -195,14 +199,20 @@ apiFetch("/messages")
     
     // ✅ AVANT : list.map() sans déchiffrement → JSON chiffré affiché
     // ✅ APRÈS : déchiffrer chaque message
-    const decryptedList = await Promise.all(
-      list.map(async (m) => ({
-        ...m,
-        content: privateKeyRef.current
-          ? await decryptMessage(m.content, privateKeyRef.current)
-          : m.content,
-      }))
-    );
+// Dans fetchMessages / receive_message
+const decryptedList = await Promise.all(
+  list.map(async (m) => {
+    const isMine = Number(m.senderId) === Number(currentUser?.id);
+    // ✅ Si c'est mon message, utiliser contentForSender (chiffré avec ma propre clé)
+    const raw = isMine && m.contentForSender ? m.contentForSender : m.content;
+    return {
+      ...m,
+      content: privateKeyRef.current
+        ? await decryptMessage(raw, privateKeyRef.current)
+        : raw,
+    };
+  })
+);
     setMessages(decryptedList);
   })
   .catch((err) => console.error("Erreur historique:", err))
@@ -216,63 +226,44 @@ apiFetch("/messages")
   }, [messages]);
 
 // ─── 3. sendMessage : bien chiffrer avec systemKey (admin), afficher en clair localement ───
+// sendMessage dans ChatPanel.jsx
+
 const sendMessage = async () => {
   if (!input.trim() && !image) return;
-
   const content  = input.trim();
-  const senderId = currentUser?.id;
   const tempId   = Date.now();
 
-  // ✅ Chiffrer pour l'admin avec sa clé publique (systemKey)
-  let encryptedContent = content;
+  let encryptedForAdmin = content;
   if (systemKeyRef.current && content) {
-    encryptedContent = await encryptMessage(content, systemKeyRef.current);
+    encryptedForAdmin = await encryptMessage(content, systemKeyRef.current);
   }
 
-  // ✅ Afficher EN CLAIR localement (jamais le JSON chiffré)
-  setMessages((prev) => [...prev, {
-    id: tempId,
-    senderId,
-    receiverId,
-    content,           // ← clair pour l'affichage
-    createdAt: new Date().toISOString(),
+  let encryptedForSelf = null;
+  const myPubKey = myPublicKeyRef.current; // ← corrigé, plus de getMyPublicKey()
+  if (myPubKey && content) {
+    encryptedForSelf = await encryptMessage(content, myPubKey);
+  }
+
+  setMessages(prev => [...prev, {
+    id: tempId, senderId: currentUser?.id,
+    content, createdAt: new Date().toISOString()
   }]);
   setInput("");
 
-  // ✅ Envoyer CHIFFRÉ au serveur (stocké chiffré en BDD)
-  try {
-    const formData = new FormData();
-    formData.append("receiverId", receiverId || 0);
-    formData.append("content", encryptedContent); // ← chiffré pour la BDD
-    if (image) formData.append("image", image);
+  const formData = new FormData();
+  formData.append("receiverId", receiverId || 0);
+  formData.append("content", encryptedForAdmin);
+  if (encryptedForSelf) formData.append("contentForSender", encryptedForSelf);
+  if (image) formData.append("image", image);
 
-    const token = localStorage.getItem("token");
-    await fetch("http://localhost:5001/api/messages", {
-      method: "POST",
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-      body: formData,
-    });
-
-    setImage(null);
-    setPreview(null);
-  } catch (err) {
-    console.error("Erreur envoi:", err);
-    setMessages((prev) => prev.filter((m) => m.id !== tempId));
-  }
+  const token = localStorage.getItem("token");
+  await fetch("http://localhost:5001/api/messages", {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  });
 };
 
-  const deleteMessage = async (id) => {
-    try {
-      const token = localStorage.getItem("token");
-      await fetch(`http://localhost:5001/api/messages/${id}`, {
-        method: "DELETE",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      setMessages((prev) => prev.filter((m) => m.id !== id));
-    } catch (err) {
-      console.error("Erreur suppression message:", err);
-    }
-  };
 
   const formatTime = (ts) =>
     ts ? new Date(ts).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "";
@@ -342,17 +333,13 @@ const sendMessage = async () => {
                   }`}>
                     {msg.content && <p className="leading-relaxed">{msg.content}</p>}
                     {msg.image && (
-                      <img src={msg.image} alt="pièce jointe"
-                        className="rounded-xl max-w-full max-h-60 cursor-pointer mt-2 border border-white/20"
-                        onClick={() => window.open(msg.image, "_blank")}
-                      />
-                    )}
-                    {isMine && (
-                      <button onClick={() => deleteMessage(msg.id)}
-                        className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center text-[10px] hover:bg-red-600">
-                        <X size={12} />
-                      </button>
-                    )}
+  <img
+    src={`http://localhost:5001/api/pieces/${msg.image}`}
+    alt="pièce jointe"
+    className="rounded-xl max-w-full max-h-60 cursor-pointer mt-2 border border-white/20"
+    onClick={() => window.open(`http://localhost:5001/api/pieces/${msg.image}`, "_blank")}
+  />
+)}
                     <span className={`text-[9px] mt-1 flex items-center gap-1 ${isMine ? "text-emerald-100/80 justify-end" : "text-slate-400"}`}>
                       <Lock size={7} />
                       {isMine ? "Vous" : (msg.sender?.nomComplet || "Support")} · {formatTime(msg.createdAt)}

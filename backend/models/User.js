@@ -49,13 +49,11 @@ const User = sequelize.define("User", {
     allowNull: true,
     defaultValue: "Informatique",
   },
-// models/User.js
-// models/User.js
 photo: {
-    type: DataTypes.TEXT,
-    allowNull: true,
-    defaultValue: "default.jpg",
-  },
+  type: DataTypes.TEXT('long'),
+  allowNull: true,
+  defaultValue: null, // "default.jpg" as a string default doesn't make sense for a base64 column
+},
   positionAdministrative: {
     type: DataTypes.STRING,
     allowNull: false,
@@ -111,6 +109,10 @@ publicKey: {
 // ✅ Ajoutez juste en dessous :
 privateKey: {
   type: DataTypes.TEXT,
+  allowNull: true,
+},
+assignedAgentId: {
+  type: DataTypes.INTEGER,
   allowNull: true,
 },
 }, {
